@@ -3,538 +3,618 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lyric Subtitle Tool</title>
+<title>Lyric Sync Tool</title>
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Segoe UI', sans-serif; background: #1a1a2e; color: #eee; overflow-x: hidden; }
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'Segoe UI',sans-serif; background:#0d0d1a; color:#eee; overflow-x:hidden; }
 
-  #editor { padding: 10px 16px; background: #16213e; border-bottom: 2px solid #0f3460; }
-  #editor h1 { font-size: 1rem; color: #e94560; margin-bottom: 8px; letter-spacing: 1px; }
-  label { font-size: 0.68rem; color: #aaa; display: block; margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.4px; }
-  textarea { width: 100%; height: 72px; background: #0f3460; border: 1px solid #e94560; border-radius: 5px; color: #fff; padding: 7px 10px; font-size: 0.85rem; resize: vertical; outline: none; margin-bottom: 8px; }
-  textarea::placeholder { color: #555; }
-  .controls-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; margin-bottom: 8px; }
-  .ctrl-group { display: flex; flex-direction: column; gap: 3px; }
-  .slider-row { display: flex; align-items: center; gap: 6px; }
-  input[type=range] { flex: 1; accent-color: #e94560; }
-  .val-label { font-size: 0.76rem; color: #e94560; font-weight: 700; min-width: 54px; text-align: right; }
-  select { background: #0f3460; color: #fff; border: 1px solid #444; border-radius: 4px; padding: 5px 8px; font-size: 0.82rem; outline: none; cursor: pointer; width: 100%; }
-  .btn-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-  button { background: #e94560; color: #fff; border: none; border-radius: 5px; padding: 7px 14px; font-size: 0.82rem; font-weight: 700; cursor: pointer; transition: background 0.15s; user-select: none; }
-  button:hover { background: #c73652; }
-  button:disabled { opacity: 0.35; cursor: not-allowed; }
-  button.sec { background: #0f3460; border: 1px solid #e94560; }
-  button.sec:hover:not(:disabled) { background: #1a4a80; }
-  #playpause-btn { min-width: 90px; }
-  #playpause-btn.is-playing { background: #c0392b; }
-  #record-btn { background: #1a7a4a; border: 1px solid #2ecc71; }
-  #record-btn.recording { background: #c0392b; border-color: #e74c3c; animation: pulse 1s infinite; }
-  #record-btn:hover:not(:disabled):not(.recording) { background: #145e38; }
-  @keyframes pulse { 0%,100%{box-shadow:0 0 6px 2px rgba(231,76,60,0.4)} 50%{box-shadow:0 0 14px 6px rgba(231,76,60,0.8)} }
-  #rec-timer { font-size: 0.78rem; color: #e74c3c; font-weight: 700; margin-left: 2px; display: none; }
-  #rec-timer.active { display: inline; }
-  #cue-info { font-size: 0.78rem; color: #888; margin-left: 4px; }
-  #hint { font-size: 0.68rem; color: #555; margin-left: 4px; }
-  #progress-bar-wrap { background: #000; height: 3px; }
-  #progress-bar { height: 100%; background: #e94560; width: 0%; transition: width 0.1s linear; }
+/* ── TABS ── */
+#tabs { display:flex; background:#16213e; border-bottom:2px solid #0f3460; }
+.tab { padding:10px 20px; font-size:0.85rem; font-weight:700; cursor:pointer; color:#888; border-bottom:3px solid transparent; transition:all 0.2s; text-transform:uppercase; letter-spacing:0.5px; }
+.tab.active { color:#e94560; border-bottom-color:#e94560; }
 
-  /* ── STAGE ── */
-  #stage {
-    background: #00FF00;
-    width: 100vw;
-    position: relative;
-    overflow: hidden;
-  }
+/* ── PANELS ── */
+.panel { display:none; padding:14px 16px; background:#16213e; }
+.panel.active { display:block; }
 
-  /* ── GREEN SCREEN MODE: shows only active cue centered ── */
-  #stage.mode-cue #teleprompter-wrap { display: none; }
-  #stage.mode-cue #cue-display { display: flex; }
+label { font-size:0.68rem; color:#aaa; display:block; margin-bottom:4px; text-transform:uppercase; letter-spacing:0.4px; }
+textarea { width:100%; height:90px; background:#0f3460; border:1px solid #e94560; border-radius:5px; color:#fff; padding:8px 10px; font-size:0.85rem; resize:vertical; outline:none; }
+textarea::placeholder { color:#555; }
+input[type=text], input[type=number] { background:#0f3460; border:1px solid #444; border-radius:4px; color:#fff; padding:5px 8px; font-size:0.85rem; outline:none; }
+input[type=range] { accent-color:#e94560; }
+select { background:#0f3460; color:#fff; border:1px solid #444; border-radius:4px; padding:5px 8px; font-size:0.82rem; outline:none; cursor:pointer; }
 
-  /* ── TELEPROMPTER MODE: scrolling all lyrics ── */
-  #stage.mode-teleprompter #cue-display { display: none; }
-  #stage.mode-teleprompter #teleprompter-wrap { display: block; }
+.row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:8px; }
+.val-label { font-size:0.76rem; color:#e94560; font-weight:700; min-width:50px; }
 
-  /* CUE DISPLAY — centered single/double/triple line */
-  #cue-display {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: absolute;
-    top: 0; left: 0;
-  }
-  #cue-block-inner {
-    text-align: center;
-    width: 96%;
-    padding: 0;
-    line-height: 1.22;
-  }
-  .cue-block { display: none; }
-  .cue-block.active { display: block; }
-  .sub-line { display: block; white-space: nowrap; }
+button { background:#e94560; color:#fff; border:none; border-radius:5px; padding:7px 14px; font-size:0.82rem; font-weight:700; cursor:pointer; transition:background 0.15s; user-select:none; white-space:nowrap; }
+button:hover { background:#c73652; }
+button:disabled { opacity:0.35; cursor:not-allowed; }
+button.sec { background:#0f3460; border:1px solid #e94560; }
+button.sec:hover:not(:disabled) { background:#1a4a80; }
+button.green { background:#1a7a4a; border:1px solid #2ecc71; }
+button.green:hover:not(:disabled) { background:#145e38; }
+button.green.recording { background:#c0392b; border-color:#e74c3c; animation:pulse 1s infinite; }
+@keyframes pulse { 0%,100%{box-shadow:0 0 6px 2px rgba(231,76,60,0.4)} 50%{box-shadow:0 0 14px 6px rgba(231,76,60,0.8)} }
 
-  /* TELEPROMPTER WRAP */
-  #teleprompter-wrap {
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-    position: relative;
-  }
-  #teleprompter-inner {
-    position: absolute;
-    width: 100%;
-    text-align: center;
-    padding: 0 4%;
-    /* top is set by JS for smooth scroll */
-  }
-  .tp-line {
-    display: block;
-    white-space: nowrap;
-    line-height: 1.3;
-    margin-bottom: 0.15em;
-  }
-  .tp-line.cue-gap {
-    height: 0.6em; /* gap between cue groups */
-  }
+/* ── STEP 1: SETUP ── */
+#audio-drop { border:2px dashed #0f3460; border-radius:8px; padding:18px; text-align:center; color:#555; font-size:0.85rem; cursor:pointer; margin-bottom:10px; transition:border-color 0.2s; }
+#audio-drop:hover, #audio-drop.drag { border-color:#e94560; color:#aaa; }
+#audio-drop.has-file { border-color:#2ecc71; color:#2ecc71; }
+#audio-player { width:100%; margin-top:8px; display:none; }
+audio { width:100%; border-radius:6px; }
 
-  /* shared char styles */
-  .char {
-    display: inline;
-    font-family: 'Arial Black', Arial, sans-serif;
-    font-weight: 900;
-    text-transform: uppercase;
-    color: #ffffff;
-    text-shadow: 2px 2px 0 #000, -2px 2px 0 #000, 2px -2px 0 #000, -2px -2px 0 #000, 0 3px 8px rgba(0,0,0,0.9);
-    transition: color 0.05s ease;
-    cursor: pointer;
-  }
-  .char:not(.space):hover { opacity: 0.82; }
-  .char.highlighted { color: #FFE600; }
-  .char.space { display: inline; cursor: default; }
+/* ── STEP 2: TAP SYNC ── */
+#tap-area { background:#0a0a1a; border-radius:8px; padding:14px; margin-top:10px; }
+#tap-cue-display { font-size:1.1rem; font-weight:700; color:#fff; text-align:center; padding:14px 8px; min-height:60px; display:flex; align-items:center; justify-content:center; background:#0f3460; border-radius:6px; margin-bottom:10px; letter-spacing:1px; }
+#tap-next-cue { font-size:0.78rem; color:#888; text-align:center; margin-bottom:8px; min-height:18px; }
+.tap-hint { font-size:0.72rem; color:#555; text-align:center; margin-top:6px; }
+#tap-progress { font-size:0.78rem; color:#e94560; font-weight:700; margin-left:8px; }
 
-  canvas#rec-canvas { display: none; }
+/* timing list */
+#timing-list { margin-top:12px; max-height:200px; overflow-y:auto; }
+#timing-list::-webkit-scrollbar { width:4px; } 
+#timing-list::-webkit-scrollbar-thumb { background:#333; border-radius:2px; }
+.timing-row { display:flex; gap:8px; align-items:center; padding:4px 0; border-bottom:1px solid #1a1a3a; font-size:0.8rem; }
+.timing-row .t-idx { color:#555; width:28px; flex-shrink:0; }
+.timing-row .t-time { width:70px; flex-shrink:0; }
+.timing-row .t-time input { width:65px; font-size:0.78rem; }
+.timing-row .t-text { color:#aaa; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.timing-row .t-del { color:#e94560; cursor:pointer; font-size:0.9rem; padding:0 4px; }
+
+/* ── STEP 3: PREVIEW & RECORD ── */
+#preview-controls { display:flex; gap:8px; flex-wrap:wrap; align-items:center; padding:10px 0; border-bottom:1px solid #1a1a3a; margin-bottom:10px; }
+.slider-row { display:flex; align-items:center; gap:6px; }
+
+/* progress bar */
+#progress-bar-wrap { background:#000; height:3px; }
+#progress-bar { height:100%; background:#e94560; width:0%; transition:width 0.1s linear; }
+
+/* ── STAGE ── */
+#stage { background:#00FF00; width:100vw; display:flex; align-items:center; justify-content:center; overflow:hidden; position:relative; }
+#stage-inner { text-align:center; width:96%; padding:0; line-height:1.25; }
+.stage-line { display:block; white-space:nowrap; }
+.char { display:inline; font-family:'Arial Black',Arial,sans-serif; font-weight:900; text-transform:uppercase; color:#fff; text-shadow:2px 2px 0 #000,-2px 2px 0 #000,2px -2px 0 #000,-2px -2px 0 #000,0 3px 8px rgba(0,0,0,0.9); transition:color 0.05s; }
+.char.hl { color:#FFE600; }
+.char.sp { display:inline; }
+
+#time-display { position:absolute; top:8px; right:12px; font-size:0.72rem; color:rgba(0,80,0,0.5); font-weight:700; pointer-events:none; }
+#rec-timer { font-size:0.78rem; color:#e74c3c; font-weight:700; display:none; }
+#rec-timer.active { display:inline; }
+
+canvas#rec-canvas { display:none; }
 </style>
 </head>
 <body>
 
-<div id="editor">
-  <h1>🎵 Lyric Subtitle Tool</h1>
-  <label>Paste Lyrics — blank line between groups = new cue</label>
-  <textarea id="lyrics-input" placeholder="SATGURU TERE CHARNON KI&#10;SATGURU TERE CHARNON KI&#10;&#10;AGAR DHOOL JO MIL JAAE&#10;&#10;SATGURU TERE CHARNON KI&#10;SATGURU TERE CHARNON KI"></textarea>
-  <div class="controls-grid">
-    <div class="ctrl-group">
-      <label>Mode</label>
-      <select id="mode"><option value="word">Word by Word</option><option value="char">Character by Character</option></select>
+<!-- TABS -->
+<div id="tabs">
+  <div class="tab active" data-tab="setup">① Setup</div>
+  <div class="tab" data-tab="sync">② Tap Sync</div>
+  <div class="tab" data-tab="record">③ Preview & Record</div>
+</div>
+
+<!-- ══════════════════════════════════════════ -->
+<!-- TAB 1: SETUP -->
+<!-- ══════════════════════════════════════════ -->
+<div class="panel active" id="panel-setup">
+  <label style="margin-bottom:6px;">1. Upload Audio</label>
+  <div id="audio-drop">🎵 Click or drag &amp; drop your audio file here (MP3, M4A, WAV, OGG)</div>
+  <input type="file" id="audio-file-input" accept="audio/*" style="display:none">
+  <div id="audio-player"><audio id="audio-el" controls></audio></div>
+
+  <div style="margin-top:12px;">
+    <label style="margin-bottom:6px;">2. Paste Lyrics — blank line between groups = new cue</label>
+    <textarea id="lyrics-input" placeholder="SATGURU TERE CHARNON KI&#10;SATGURU TERE CHARNON KI&#10;&#10;AGAR DHOOL JO MIL JAAE&#10;&#10;SATGURU TERE CHARNON KI&#10;SATGURU TERE CHARNON KI"></textarea>
+  </div>
+
+  <div class="row" style="margin-top:10px;">
+    <select id="hl-mode"><option value="word">Word by Word</option><option value="char">Character by Character</option></select>
+    <label style="margin:0;color:#555;">Highlight:</label>
+    <div class="slider-row">
+      <label style="margin:0;">Word ms</label>
+      <input type="range" id="word-speed" min="80" max="1500" value="350" step="20" style="width:100px;">
+      <span class="val-label" id="word-speed-val">350</span>
     </div>
-    <div class="ctrl-group">
-      <label>Display</label>
-      <select id="display-mode"><option value="cue">Green Screen (cue)</option><option value="teleprompter">Teleprompter Scroll</option></select>
+    <div class="slider-row">
+      <label style="margin:0;">Char ms</label>
+      <input type="range" id="char-speed" min="20" max="800" value="100" step="10" style="width:100px;">
+      <span class="val-label" id="char-speed-val">100</span>
     </div>
-    <div class="ctrl-group">
-      <label>Word Speed</label>
-      <div class="slider-row">
-        <input type="range" id="word-speed" min="80" max="1500" value="380" step="20">
-        <span class="val-label" id="word-speed-val">380 ms</span>
-      </div>
-    </div>
-    <div class="ctrl-group">
-      <label>Char Speed</label>
-      <div class="slider-row">
-        <input type="range" id="char-speed" min="20" max="1500" value="120" step="10">
-        <span class="val-label" id="char-speed-val">120 ms</span>
-      </div>
-    </div>
-    <div class="ctrl-group">
-      <label>Cue Pause</label>
-      <div class="slider-row">
-        <input type="range" id="cue-pause" min="0" max="3000" value="400" step="50">
-        <span class="val-label" id="cue-pause-val">400 ms</span>
-      </div>
-    </div>
-    <div class="ctrl-group">
-      <label>Font Size</label>
-      <div class="slider-row">
-        <input type="range" id="font-size" min="2" max="10" value="5.5" step="0.25">
-        <span class="val-label" id="font-size-val">5.5 vw</span>
-      </div>
+    <div class="slider-row">
+      <label style="margin:0;">Font</label>
+      <input type="range" id="font-size" min="2" max="10" value="5.5" step="0.25" style="width:80px;">
+      <span class="val-label" id="font-size-val">5.5vw</span>
     </div>
   </div>
-  <div class="btn-row">
-    <button id="load-btn">⬆ Load</button>
-    <button id="playpause-btn" disabled>▶ Play</button>
-    <button class="sec" id="reset-btn" disabled>⏹ Reset</button>
-    <button class="sec" id="prev-btn" disabled>◀ Prev</button>
-    <button class="sec" id="next-btn" disabled>Next ▶</button>
-    <button id="record-btn" disabled>⏺ Record</button>
-    <span id="rec-timer">00:00</span>
-    <span id="cue-info">Load lyrics to begin</span>
-    <span id="hint">💡 Click any letter to jump · Space = play/pause</span>
+
+  <div class="row" style="margin-top:10px;">
+    <button id="setup-next-btn">Next → Go to Tap Sync</button>
+    <span id="setup-status" style="font-size:0.78rem;color:#888;"></span>
   </div>
 </div>
 
-<div id="progress-bar-wrap"><div id="progress-bar"></div></div>
-
-<div id="stage" class="mode-cue">
-  <!-- CUE MODE -->
-  <div id="cue-display">
-    <div id="cue-block-inner"></div>
+<!-- ══════════════════════════════════════════ -->
+<!-- TAB 2: TAP SYNC -->
+<!-- ══════════════════════════════════════════ -->
+<div class="panel" id="panel-sync">
+  <div style="font-size:0.8rem;color:#888;margin-bottom:8px;">
+    Press <strong style="color:#e94560;">ENTER</strong> or tap <strong style="color:#e94560;">TAP CUE</strong> each time a lyric cue starts. Audio plays below.
   </div>
-  <!-- TELEPROMPTER MODE -->
-  <div id="teleprompter-wrap">
-    <div id="teleprompter-inner"></div>
+  <audio id="audio-sync" controls style="width:100%;margin-bottom:8px;border-radius:6px;"></audio>
+
+  <div id="tap-area">
+    <div id="tap-cue-display">Load lyrics first</div>
+    <div id="tap-next-cue"></div>
+    <div class="row" style="justify-content:center;gap:10px;">
+      <button id="tap-btn" disabled style="font-size:1rem;padding:10px 28px;background:#e94560;">⏎ TAP CUE</button>
+      <button id="tap-undo-btn" class="sec" disabled>↩ Undo</button>
+      <button id="tap-reset-btn" class="sec" disabled>Reset Taps</button>
+      <span id="tap-progress"></span>
+    </div>
+    <div class="tap-hint">Tip: tap slightly before the lyric starts. You can fine-tune times below.</div>
+  </div>
+
+  <!-- Manual timing table -->
+  <div style="margin-top:12px;display:flex;justify-content:space-between;align-items:center;">
+    <label style="margin:0;">Manual Timing (seconds) — edit any cue start time directly</label>
+    <button id="add-timing-btn" class="sec" style="font-size:0.75rem;padding:4px 10px;">+ Add Cue</button>
+  </div>
+  <div id="timing-list"></div>
+
+  <div class="row" style="margin-top:10px;">
+    <button id="sync-next-btn">Next → Preview &amp; Record</button>
+    <button id="sync-back-btn" class="sec">← Back</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════ -->
+<!-- TAB 3: PREVIEW & RECORD -->
+<!-- ══════════════════════════════════════════ -->
+<div class="panel" id="panel-record">
+  <div id="preview-controls">
+    <button id="preview-play-btn">▶ Preview</button>
+    <button id="preview-stop-btn" class="sec">⏹ Stop</button>
+    <button id="record-btn" class="green">⏺ Record Green Screen</button>
+    <span id="rec-timer">00:00</span>
+    <span id="rec-status" style="font-size:0.78rem;color:#888;margin-left:4px;"></span>
+    <div class="slider-row" style="margin-left:auto;">
+      <label style="margin:0;font-size:0.7rem;">Font</label>
+      <input type="range" id="font-size-preview" min="2" max="10" value="5.5" step="0.25" style="width:80px;">
+      <span class="val-label" id="font-size-preview-val">5.5vw</span>
+    </div>
+  </div>
+  <div id="progress-bar-wrap"><div id="progress-bar"></div></div>
+  <div id="stage">
+    <div id="stage-inner"></div>
+    <div id="time-display">0.0s</div>
   </div>
 </div>
 
 <canvas id="rec-canvas"></canvas>
 
 <script>
-// ── Stage height ──
+// ══════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════
+let audioSrc = null;
+let cues = [];        // [{lines:[str], startTime:number|null, endTime:number|null}]
+let tapIdx = 0;       // next cue to tap
+let timings = [];     // parallel array: startTime in seconds for each cue (null = not set)
+
+// preview/record state
+let previewRunning = false;
+let previewTimer = null;
+let previewAudio = null;
+let currentDisplayCue = -1; // which cue is visible (-1 = none)
+let unitIdx = 0;
+let playTimer = null;
+let stageUnits = [];  // [{el, cueIdx}]
+
+// recording
+let isRecording = false, mediaRecorder = null, recordedChunks = [];
+let recTimerInterval = null, recStartTime = 0, recRafId = null;
+
+// ══════════════════════════════════════════════
+// TABS
+// ══════════════════════════════════════════════
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
+    if (tab.dataset.tab === 'record') buildStage();
+    setStageHeight();
+  });
+});
+function goTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + name));
+  if (name === 'record') buildStage();
+  setStageHeight();
+}
+
+// ══════════════════════════════════════════════
+// STAGE HEIGHT
+// ══════════════════════════════════════════════
 const stage = document.getElementById('stage');
 function setStageHeight() {
-  const edH = document.getElementById('editor').offsetHeight +
-              document.getElementById('progress-bar-wrap').offsetHeight;
-  stage.style.height = (window.innerHeight - edH) + 'px';
+  // only matters on record tab
+  const recPanel = document.getElementById('panel-record');
+  const isActive = recPanel.classList.contains('active');
+  if (!isActive) return;
+  const tabsH   = document.getElementById('tabs').offsetHeight;
+  const ctrlH   = document.getElementById('preview-controls').offsetHeight;
+  const pbH      = document.getElementById('progress-bar-wrap').offsetHeight;
+  stage.style.height = (window.innerHeight - tabsH - ctrlH - pbH) + 'px';
 }
-window.addEventListener('resize', () => { setStageHeight(); });
+window.addEventListener('resize', setStageHeight);
 
-// ── DOM refs ──
-const lyricsInput   = document.getElementById('lyrics-input');
-const modeEl        = document.getElementById('mode');
-const displayModeEl = document.getElementById('display-mode');
-const wordSpeedEl   = document.getElementById('word-speed');
-const wordSpeedVal  = document.getElementById('word-speed-val');
-const charSpeedEl   = document.getElementById('char-speed');
-const charSpeedVal  = document.getElementById('char-speed-val');
-const cuePauseEl    = document.getElementById('cue-pause');
-const cuePauseVal   = document.getElementById('cue-pause-val');
-const fontSizeEl    = document.getElementById('font-size');
-const fontSizeVal   = document.getElementById('font-size-val');
-const loadBtn       = document.getElementById('load-btn');
-const playpauseBtn  = document.getElementById('playpause-btn');
-const resetBtn      = document.getElementById('reset-btn');
-const prevBtn       = document.getElementById('prev-btn');
-const nextBtn       = document.getElementById('next-btn');
-const recordBtn     = document.getElementById('record-btn');
-const recTimerEl    = document.getElementById('rec-timer');
-const cueInfoEl     = document.getElementById('cue-info');
-const progressBar   = document.getElementById('progress-bar');
-const cueBlockInner = document.getElementById('cue-block-inner');
-const tpInner       = document.getElementById('teleprompter-inner');
-const recCanvas     = document.getElementById('rec-canvas');
+// ══════════════════════════════════════════════
+// AUDIO UPLOAD
+// ══════════════════════════════════════════════
+const audioDrop      = document.getElementById('audio-drop');
+const audioFileInput = document.getElementById('audio-file-input');
+const audioEl        = document.getElementById('audio-el');
+const audioSync      = document.getElementById('audio-sync');
 
-// ── State ──
-let cues = [], allUnits = [], unitIndex = 0, currentCue = 0;
-let playing = false, playTimer = null;
-let isRecording = false, mediaRecorder = null, recordedChunks = [];
-let recRafId = null, recTimerInterval = null, recStartTime = 0;
-let tpTargetY = 0, tpCurrentY = 0, tpAnimId = null;
+audioDrop.addEventListener('click', () => audioFileInput.click());
+audioDrop.addEventListener('dragover', e => { e.preventDefault(); audioDrop.classList.add('drag'); });
+audioDrop.addEventListener('dragleave', () => audioDrop.classList.remove('drag'));
+audioDrop.addEventListener('drop', e => { e.preventDefault(); audioDrop.classList.remove('drag'); handleAudioFile(e.dataTransfer.files[0]); });
+audioFileInput.addEventListener('change', e => handleAudioFile(e.target.files[0]));
 
-// ── Sliders ──
-wordSpeedEl.addEventListener('input', () => wordSpeedVal.textContent = wordSpeedEl.value + ' ms');
-charSpeedEl.addEventListener('input', () => charSpeedVal.textContent = charSpeedEl.value + ' ms');
-cuePauseEl.addEventListener('input',  () => cuePauseVal.textContent  = cuePauseEl.value  + ' ms');
-fontSizeEl.addEventListener('input',  () => {
-  fontSizeVal.textContent = fontSizeEl.value + ' vw';
-  document.querySelectorAll('.char').forEach(c => c.style.fontSize = fontSizeEl.value + 'vw');
-  scheduleCanvasDraw();
+function handleAudioFile(file) {
+  if (!file) return;
+  audioSrc = URL.createObjectURL(file);
+  audioEl.src = audioSrc;
+  audioSync.src = audioSrc;
+  document.getElementById('audio-player').style.display = 'block';
+  audioDrop.textContent = '✅ ' + file.name;
+  audioDrop.classList.add('has-file');
+}
+
+// ══════════════════════════════════════════════
+// SLIDERS
+// ══════════════════════════════════════════════
+document.getElementById('word-speed').addEventListener('input', e => document.getElementById('word-speed-val').textContent = e.target.value);
+document.getElementById('char-speed').addEventListener('input', e => document.getElementById('char-speed-val').textContent = e.target.value);
+document.getElementById('font-size').addEventListener('input', e => document.getElementById('font-size-val').textContent = e.target.value + 'vw');
+document.getElementById('font-size-preview').addEventListener('input', e => {
+  document.getElementById('font-size-preview-val').textContent = e.target.value + 'vw';
+  document.querySelectorAll('.char').forEach(c => c.style.fontSize = e.target.value + 'vw');
 });
 
-// ── Display mode switch ──
-displayModeEl.addEventListener('change', () => {
-  stage.className = displayModeEl.value === 'teleprompter' ? 'mode-teleprompter' : 'mode-cue';
-  if (displayModeEl.value === 'teleprompter') scrollTpToCue(currentCue, true);
-});
+// ══════════════════════════════════════════════
+// SETUP → NEXT
+// ══════════════════════════════════════════════
+document.getElementById('setup-next-btn').addEventListener('click', () => {
+  const raw = document.getElementById('lyrics-input').value.trim();
+  if (!raw) { document.getElementById('setup-status').textContent = '⚠ Paste lyrics first!'; return; }
 
-// ── LOAD ──
-loadBtn.addEventListener('click', () => {
-  const raw = lyricsInput.value.trim();
-  if (!raw) return;
+  // Parse cues by blank lines
   cues = [];
-  let current = [];
+  let cur = [];
   raw.split('\n').forEach(line => {
     const t = line.trim();
-    if (t === '') { if (current.length) { cues.push(current); current = []; } }
-    else current.push(t);
+    if (t === '') { if (cur.length) { cues.push({ lines: cur, startTime: null }); cur = []; } }
+    else cur.push(t);
   });
-  if (current.length) cues.push(current);
-  if (!cues.length) return;
+  if (cur.length) cues.push({ lines: cur, startTime: null });
 
-  buildCueDOM();
-  buildTeleprompterDOM();
-  resetState();
-  [playpauseBtn, resetBtn, prevBtn, nextBtn, recordBtn].forEach(b => b.disabled = false);
-  updateNav();
-  setStageHeight();
+  timings = cues.map(() => null);
+  tapIdx = 0;
+
+  if (!audioSrc) { document.getElementById('setup-status').textContent = '⚠ Upload audio first!'; return; }
+
+  document.getElementById('setup-status').textContent = '';
+  initTapUI();
+  goTab('sync');
 });
 
-// ── BUILD CUE DOM ──
-function buildCueDOM() {
-  cueBlockInner.innerHTML = '';
-  allUnits = [];
-  const fs = fontSizeEl.value + 'vw';
-  const mode = modeEl.value;
+// ══════════════════════════════════════════════
+// TAP SYNC UI
+// ══════════════════════════════════════════════
+const tapBtn      = document.getElementById('tap-btn');
+const tapUndoBtn  = document.getElementById('tap-undo-btn');
+const tapResetBtn = document.getElementById('tap-reset-btn');
+const tapCueDisp  = document.getElementById('tap-cue-display');
+const tapNextDisp = document.getElementById('tap-next-cue');
+const tapProgress = document.getElementById('tap-progress');
 
-  cues.forEach((lines, cIdx) => {
-    const cueDiv = document.createElement('div');
-    cueDiv.className = 'cue-block';
-    cueDiv.dataset.cue = cIdx;
-
-    lines.forEach((line, lIdx) => {
-      const lineSpan = document.createElement('span');
-      lineSpan.className = 'sub-line';
-      buildLineSpans(lineSpan, line, cIdx, fs, mode);
-      cueDiv.appendChild(lineSpan);
-      if (lIdx < lines.length - 1) cueDiv.appendChild(document.createElement('br'));
-    });
-
-    cueBlockInner.appendChild(cueDiv);
-  });
+function initTapUI() {
+  tapBtn.disabled = false;
+  tapUndoBtn.disabled = true;
+  tapResetBtn.disabled = false;
+  tapIdx = 0;
+  updateTapDisplay();
+  renderTimingList();
 }
 
-// ── BUILD TELEPROMPTER DOM ──
-function buildTeleprompterDOM() {
-  tpInner.innerHTML = '';
-  const fs = fontSizeEl.value + 'vw';
-  const mode = modeEl.value;
-
-  cues.forEach((lines, cIdx) => {
-    if (cIdx > 0) {
-      // gap between cues
-      const gap = document.createElement('span');
-      gap.className = 'tp-line cue-gap';
-      tpInner.appendChild(gap);
-    }
-    lines.forEach(line => {
-      const lineSpan = document.createElement('span');
-      lineSpan.className = 'tp-line';
-      lineSpan.dataset.cue = cIdx;
-      buildLineSpans(lineSpan, line, cIdx, fs, mode);
-      tpInner.appendChild(lineSpan);
-    });
-  });
-}
-
-// ── SHARED: build char/word spans into a container ──
-function buildLineSpans(container, line, cIdx, fs, mode) {
-  if (mode === 'word') {
-    line.split(/\s+/).forEach((word, wi) => {
-      if (wi > 0) {
-        const sp = document.createElement('span');
-        sp.className = 'char space'; sp.textContent = ' '; sp.style.fontSize = fs;
-        container.appendChild(sp);
-      }
-      const span = document.createElement('span');
-      span.className = 'char'; span.textContent = word; span.style.fontSize = fs;
-      container.appendChild(span);
-      const ui = allUnits.length;
-      allUnits.push({ cueIdx: cIdx });
-      span.addEventListener('click', () => clickJumpTo(ui));
-    });
-  } else {
-    for (let ci = 0; ci < line.length; ci++) {
-      const ch = line[ci];
-      const span = document.createElement('span');
-      span.className = ch === ' ' ? 'char space' : 'char';
-      span.textContent = ch; span.style.fontSize = fs;
-      container.appendChild(span);
-      if (ch !== ' ') {
-        const ui = allUnits.length;
-        allUnits.push({ cueIdx: cIdx });
-        span.addEventListener('click', () => clickJumpTo(ui));
-      }
-    }
-  }
-}
-
-// ── After building, allUnits only has cueIdx — we need el refs ──
-// Rebuild allUnits properly with element refs after DOM is built
-function rebuildUnitRefs() {
-  // Get all non-space chars in order from both cue DOM and tp DOM
-  // We use cue DOM as the source of truth for highlighting
-  allUnits = [];
-  document.querySelectorAll('#cue-block-inner .char:not(.space)').forEach(el => {
-    const cueDiv = el.closest('.cue-block');
-    allUnits.push({ el, cueIdx: parseInt(cueDiv.dataset.cue) });
-  });
-  // Wire up click handlers
-  allUnits.forEach((u, ui) => {
-    u.el.removeEventListener('click', u._handler);
-    u._handler = () => clickJumpTo(ui);
-    u.el.addEventListener('click', u._handler);
-  });
-  // Mirror highlights from cue DOM into teleprompter DOM
-  syncTpHighlights();
-}
-
-// ── Sync teleprompter highlight state to match cue DOM ──
-function syncTpHighlights() {
-  // Get all highlighted text from cue DOM, apply same to tp DOM by position
-  const cueChars = Array.from(document.querySelectorAll('#cue-block-inner .char:not(.space)'));
-  const tpChars  = Array.from(document.querySelectorAll('#teleprompter-inner .char:not(.space)'));
-  const len = Math.min(cueChars.length, tpChars.length);
-  for (let i = 0; i < len; i++) {
-    if (cueChars[i].classList.contains('highlighted')) tpChars[i].classList.add('highlighted');
-    else tpChars[i].classList.remove('highlighted');
-  }
-}
-
-// ── Show cue (cue mode) ──
-function showCue(idx) {
-  document.querySelectorAll('#cue-block-inner .cue-block').forEach((el, i) => {
-    el.classList.toggle('active', i === idx);
-  });
-  currentCue = idx;
-  if (displayModeEl.value === 'teleprompter') scrollTpToCue(idx, false);
-  scheduleCanvasDraw();
-}
-
-// ── Teleprompter scroll — smoothly keep active cue centered ──
-function scrollTpToCue(cIdx, instant) {
-  const stageH = stage.offsetHeight;
-  // Find first tp-line for this cue
-  const firstLine = tpInner.querySelector(`.tp-line[data-cue="${cIdx}"]`);
-  if (!firstLine) return;
-  const lineTop = firstLine.offsetTop;
-  const lineH = firstLine.offsetHeight;
-  // Center it in stage
-  tpTargetY = -(lineTop - stageH / 2 + lineH / 2);
-  if (instant) {
-    tpCurrentY = tpTargetY;
-    tpInner.style.top = tpCurrentY + 'px';
-  } else {
-    animateTp();
-  }
-}
-
-function animateTp() {
-  if (tpAnimId) cancelAnimationFrame(tpAnimId);
-  function step() {
-    const diff = tpTargetY - tpCurrentY;
-    if (Math.abs(diff) < 0.5) { tpCurrentY = tpTargetY; tpInner.style.top = tpCurrentY + 'px'; return; }
-    tpCurrentY += diff * 0.12; // smooth ease
-    tpInner.style.top = tpCurrentY + 'px';
-    tpAnimId = requestAnimationFrame(step);
-  }
-  step();
-}
-
-// ── Highlight a unit — applies to both cue and tp DOM ──
-function highlightUnit(idx) {
-  if (idx >= allUnits.length) return;
-  const cueChar = allUnits[idx].el;
-  cueChar.classList.add('highlighted');
-  // mirror to teleprompter
-  const tpChars = Array.from(document.querySelectorAll('#teleprompter-inner .char:not(.space)'));
-  if (tpChars[idx]) tpChars[idx].classList.add('highlighted');
-  scheduleCanvasDraw();
-}
-
-function clearAllHighlights() {
-  document.querySelectorAll('.char').forEach(c => c.classList.remove('highlighted'));
-  scheduleCanvasDraw();
-}
-
-// ── CLICK TO JUMP ──
-function clickJumpTo(idx) {
-  clearTimeout(playTimer);
-  clearAllHighlights();
-  for (let i = 0; i < idx; i++) highlightUnit(i);
-  unitIndex = idx;
-  showCue(allUnits[idx].cueIdx);
-  updateNav(); updateProgress();
-  playing = true; updatePlayBtn(); tick();
-}
-
-// ── RESET ──
-function resetState() {
-  playing = false; clearTimeout(playTimer); unitIndex = 0;
-  clearAllHighlights();
-  if (cues.length) showCue(0);
-  updatePlayBtn(); updateProgress();
-}
-
-function getSpeed() {
-  return modeEl.value === 'char' ? parseInt(charSpeedEl.value) : parseInt(wordSpeedEl.value);
-}
-
-// ── PLAY/PAUSE ──
-playpauseBtn.addEventListener('click', togglePlay);
-function togglePlay() {
-  if (!cues.length) return;
-  if (playing) { playing = false; clearTimeout(playTimer); }
-  else { playing = true; tick(); }
-  updatePlayBtn();
-}
-function updatePlayBtn() {
-  playpauseBtn.textContent = playing ? '⏸ Pause' : '▶ Play';
-  playpauseBtn.classList.toggle('is-playing', playing);
-}
-
-// ── TICK ──
-function tick() {
-  if (!playing) return;
-  if (unitIndex >= allUnits.length) { playing = false; updatePlayBtn(); updateProgress(); return; }
-
-  const entry = allUnits[unitIndex];
-
-  if (entry.cueIdx !== currentCue) {
-    // cue boundary — brief pause then switch
-    playing = false;
-    playTimer = setTimeout(() => {
-      clearAllHighlights();
-      showCue(entry.cueIdx); updateNav();
-      playing = true; updatePlayBtn(); tick();
-    }, parseInt(cuePauseEl.value));
+function updateTapDisplay() {
+  if (tapIdx >= cues.length) {
+    tapCueDisp.textContent = '✅ All cues tapped!';
+    tapNextDisp.textContent = '';
+    tapProgress.textContent = cues.length + ' / ' + cues.length;
+    tapBtn.disabled = true;
     return;
   }
-
-  highlightUnit(unitIndex);
-  unitIndex++; updateProgress();
-  playTimer = setTimeout(tick, getSpeed());
+  tapCueDisp.textContent = cues[tapIdx].lines.join(' | ');
+  tapNextDisp.textContent = tapIdx + 1 < cues.length ? 'Next: ' + cues[tapIdx + 1].lines.join(' | ') : '(last cue)';
+  tapProgress.textContent = tapIdx + ' / ' + cues.length + ' tapped';
 }
 
-// ── RESET / PREV / NEXT ──
-resetBtn.addEventListener('click', () => {
-  clearTimeout(playTimer); clearAllHighlights();
-  unitIndex = 0; playing = false;
-  if (cues.length) showCue(0);
-  updatePlayBtn(); updateNav(); updateProgress();
-});
-prevBtn.addEventListener('click', () => jumpToCue(Math.max(0, currentCue - 1)));
-nextBtn.addEventListener('click', () => jumpToCue(Math.min(cues.length - 1, currentCue + 1)));
-
-function jumpToCue(idx) {
-  playing = false; clearTimeout(playTimer); clearAllHighlights();
-  unitIndex = allUnits.findIndex(u => u.cueIdx === idx);
-  if (unitIndex < 0) unitIndex = 0;
-  showCue(idx); updatePlayBtn(); updateNav(); updateProgress();
-}
-
-// ── SCROLL — only visual, never stops playback ──
-let scrollAccum = 0;
-stage.addEventListener('wheel', e => {
-  e.preventDefault(); scrollAccum += e.deltaY;
-  if (Math.abs(scrollAccum) > 60) {
-    const target = scrollAccum > 0
-      ? Math.min(cues.length - 1, currentCue + 1)
-      : Math.max(0, currentCue - 1);
-    showCue(target); updateNav();
-    scrollAccum = 0;
-  }
-}, { passive: false });
-
-// ── SPACEBAR ──
+tapBtn.addEventListener('click', doTap);
 document.addEventListener('keydown', e => {
-  if (e.code === 'Space' && document.activeElement.tagName !== 'TEXTAREA') {
-    e.preventDefault(); togglePlay();
+  if (e.code === 'Enter' && document.getElementById('panel-sync').classList.contains('active') && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+    e.preventDefault(); doTap();
   }
 });
 
-// ─────────────────────────────────────────────
-// CANVAS RECORDER — draws independently, never blocks tick
-// ─────────────────────────────────────────────
+function doTap() {
+  if (tapIdx >= cues.length) return;
+  const t = audioSync.currentTime;
+  timings[tapIdx] = parseFloat(t.toFixed(2));
+  cues[tapIdx].startTime = timings[tapIdx];
+  tapIdx++;
+  tapUndoBtn.disabled = false;
+  updateTapDisplay();
+  renderTimingList();
+}
+
+tapUndoBtn.addEventListener('click', () => {
+  if (tapIdx === 0) return;
+  tapIdx--;
+  timings[tapIdx] = null;
+  cues[tapIdx].startTime = null;
+  updateTapDisplay();
+  renderTimingList();
+  if (tapIdx === 0) tapUndoBtn.disabled = true;
+});
+
+tapResetBtn.addEventListener('click', () => {
+  tapIdx = 0;
+  timings = cues.map(() => null);
+  cues.forEach(c => c.startTime = null);
+  tapUndoBtn.disabled = true;
+  updateTapDisplay();
+  renderTimingList();
+});
+
+// ══════════════════════════════════════════════
+// TIMING LIST (manual edit)
+// ══════════════════════════════════════════════
+function renderTimingList() {
+  const list = document.getElementById('timing-list');
+  list.innerHTML = '';
+  cues.forEach((cue, i) => {
+    const row = document.createElement('div');
+    row.className = 'timing-row';
+    row.innerHTML = `
+      <span class="t-idx">#${i+1}</span>
+      <span class="t-time"><input type="number" step="0.1" min="0" value="${cue.startTime !== null ? cue.startTime : ''}" placeholder="sec" data-idx="${i}"></span>
+      <span class="t-text">${cue.lines.join(' | ')}</span>
+      <span class="t-del" data-idx="${i}" title="Clear timing">✕</span>
+    `;
+    list.appendChild(row);
+  });
+
+  // input listeners
+  list.querySelectorAll('input[type=number]').forEach(inp => {
+    inp.addEventListener('change', e => {
+      const idx = parseInt(e.target.dataset.idx);
+      const val = parseFloat(e.target.value);
+      cues[idx].startTime = isNaN(val) ? null : val;
+      timings[idx] = cues[idx].startTime;
+    });
+  });
+  list.querySelectorAll('.t-del').forEach(btn => {
+    btn.addEventListener('click', e => {
+      const idx = parseInt(e.target.dataset.idx);
+      cues[idx].startTime = null; timings[idx] = null;
+      renderTimingList();
+    });
+  });
+}
+
+document.getElementById('add-timing-btn').addEventListener('click', () => {
+  cues.push({ lines: ['NEW CUE — edit me'], startTime: null });
+  timings.push(null);
+  renderTimingList();
+});
+
+// ══════════════════════════════════════════════
+// SYNC → NEXT
+// ══════════════════════════════════════════════
+document.getElementById('sync-next-btn').addEventListener('click', () => {
+  const hasTiming = cues.some(c => c.startTime !== null);
+  if (!hasTiming) { alert('Please tap at least one cue timing!'); return; }
+  // sort cues by startTime (nulls go to end)
+  cues.sort((a,b) => {
+    if (a.startTime === null) return 1;
+    if (b.startTime === null) return -1;
+    return a.startTime - b.startTime;
+  });
+  // compute endTimes
+  cues.forEach((c, i) => {
+    c.endTime = (i + 1 < cues.length && cues[i+1].startTime !== null) ? cues[i+1].startTime : null;
+  });
+  buildStage();
+  goTab('record');
+});
+document.getElementById('sync-back-btn').addEventListener('click', () => goTab('setup'));
+
+// ══════════════════════════════════════════════
+// BUILD STAGE DOM
+// ══════════════════════════════════════════════
+const stageInner = document.getElementById('stage-inner');
+
+function buildStage() {
+  stageInner.innerHTML = '';
+  stageUnits = [];
+  const fs = document.getElementById('font-size').value + 'vw';
+  const mode = document.getElementById('hl-mode').value;
+
+  cues.forEach((cue, cIdx) => {
+    const cueDiv = document.createElement('div');
+    cueDiv.className = 'cue-div';
+    cueDiv.dataset.cue = cIdx;
+    cueDiv.style.display = 'none'; // hidden by default
+
+    cue.lines.forEach((line, lIdx) => {
+      const lineSpan = document.createElement('span');
+      lineSpan.className = 'stage-line';
+
+      if (mode === 'word') {
+        line.split(/\s+/).forEach((word, wi) => {
+          if (wi > 0) { const sp=document.createElement('span'); sp.className='char sp'; sp.textContent=' '; sp.style.fontSize=fs; lineSpan.appendChild(sp); }
+          const span = document.createElement('span');
+          span.className = 'char'; span.textContent = word; span.style.fontSize = fs;
+          lineSpan.appendChild(span);
+          stageUnits.push({ el:span, cueIdx:cIdx });
+        });
+      } else {
+        for (let ci=0; ci<line.length; ci++) {
+          const ch = line[ci];
+          const span = document.createElement('span');
+          span.className = ch===' ' ? 'char sp' : 'char';
+          span.textContent = ch; span.style.fontSize = fs;
+          lineSpan.appendChild(span);
+          if (ch !== ' ') stageUnits.push({ el:span, cueIdx:cIdx });
+        }
+      }
+      cueDiv.appendChild(lineSpan);
+      if (lIdx < cue.lines.length-1) cueDiv.appendChild(document.createElement('br'));
+    });
+    stageInner.appendChild(cueDiv);
+  });
+  setStageHeight();
+}
+
+function showCueOnStage(idx) {
+  document.querySelectorAll('#stage-inner .cue-div').forEach((el,i) => el.style.display = i===idx ? 'block' : 'none');
+  currentDisplayCue = idx;
+}
+function hideStageLyrics() {
+  document.querySelectorAll('#stage-inner .cue-div').forEach(el => el.style.display = 'none');
+  currentDisplayCue = -1;
+  scheduleCanvasDraw();
+}
+
+// ══════════════════════════════════════════════
+// PREVIEW PLAYBACK — audio-driven
+// ══════════════════════════════════════════════
+let previewAudioEl = null;
+
+document.getElementById('preview-play-btn').addEventListener('click', startPreview);
+document.getElementById('preview-stop-btn').addEventListener('click', stopPreview);
+
+function startPreview() {
+  if (!cues.length || !audioSrc) return;
+  stopPreview();
+
+  // create audio for preview tab
+  if (!previewAudioEl) {
+    previewAudioEl = new Audio(audioSrc);
+    previewAudioEl.addEventListener('ended', stopPreview);
+  } else {
+    previewAudioEl.currentTime = 0;
+  }
+
+  previewRunning = true;
+  hideStageLyrics();
+  clearHighlights();
+  unitIdx = 0;
+  document.getElementById('preview-play-btn').disabled = true;
+  previewAudioEl.play();
+  tickPreview();
+}
+
+function stopPreview() {
+  previewRunning = false;
+  clearTimeout(previewTimer);
+  cancelAnimationFrame(previewRafId);
+  if (previewAudioEl) { previewAudioEl.pause(); previewAudioEl.currentTime = 0; }
+  hideStageLyrics();
+  clearHighlights();
+  document.getElementById('preview-play-btn').disabled = false;
+  document.getElementById('progress-bar').style.width = '0%';
+  document.getElementById('time-display').textContent = '0.0s';
+}
+
+let previewRafId = null;
+
+function tickPreview() {
+  if (!previewRunning) return;
+  const t = previewAudioEl ? previewAudioEl.currentTime : 0;
+  document.getElementById('time-display').textContent = t.toFixed(1) + 's';
+
+  // find which cue should be showing
+  let activeCue = -1;
+  for (let i = 0; i < cues.length; i++) {
+    const c = cues[i];
+    if (c.startTime === null) continue;
+    const end = c.endTime !== null ? c.endTime : c.startTime + 999;
+    if (t >= c.startTime && t < end) { activeCue = i; break; }
+  }
+
+  if (activeCue !== currentDisplayCue) {
+    if (activeCue === -1) {
+      hideStageLyrics();
+      clearHighlights();
+      unitIdx = 0;
+    } else {
+      hideStageLyrics();
+      clearHighlights();
+      showCueOnStage(activeCue);
+      unitIdx = stageUnits.findIndex(u => u.cueIdx === activeCue);
+      if (unitIdx < 0) unitIdx = 0;
+      scheduleHighlightTick();
+    }
+    scheduleCanvasDraw();
+  }
+
+  // progress bar
+  if (previewAudioEl && previewAudioEl.duration) {
+    document.getElementById('progress-bar').style.width = (t / previewAudioEl.duration * 100) + '%';
+  }
+
+  previewRafId = requestAnimationFrame(tickPreview);
+}
+
+// highlight ticker — runs on setTimeout independent of rAF
+let hlTimer = null;
+function scheduleHighlightTick() {
+  clearTimeout(hlTimer);
+  hlTimer = setTimeout(hlTick, 0);
+}
+
+function hlTick() {
+  if (!previewRunning) return;
+  if (unitIdx >= stageUnits.length) return;
+  const u = stageUnits[unitIdx];
+  if (u.cueIdx !== currentDisplayCue) return; // cue changed, stop
+  u.el.classList.add('hl');
+  scheduleCanvasDraw();
+  unitIdx++;
+  const speed = document.getElementById('hl-mode').value === 'char'
+    ? parseInt(document.getElementById('char-speed').value)
+    : parseInt(document.getElementById('word-speed').value);
+  hlTimer = setTimeout(hlTick, speed);
+}
+
+function clearHighlights() {
+  document.querySelectorAll('.char').forEach(c => c.classList.remove('hl'));
+  scheduleCanvasDraw();
+}
+
+// ══════════════════════════════════════════════
+// CANVAS RECORDER
+// ══════════════════════════════════════════════
+const recCanvas = document.getElementById('rec-canvas');
 let canvasDrawPending = false;
+
 function scheduleCanvasDraw() {
   if (!isRecording || canvasDrawPending) return;
   canvasDrawPending = true;
@@ -548,69 +628,55 @@ function drawToCanvas() {
   const W = recCanvas.width, H = recCanvas.height;
   ctx.fillStyle = '#00FF00';
   ctx.fillRect(0, 0, W, H);
-  if (!cues.length || !allUnits.length) return;
 
-  const vw = W;
-  const fontPx = Math.round(parseFloat(fontSizeEl.value) / 100 * vw);
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
+  if (currentDisplayCue < 0) return; // pure green — no lyrics
+
+  const cueDiv = stageInner.querySelector(`.cue-div[data-cue="${currentDisplayCue}"]`);
+  if (!cueDiv || cueDiv.style.display === 'none') return;
+
+  const fs = parseFloat(document.getElementById('font-size-preview').value);
+  const fontPx = Math.round(fs / 100 * W);
   ctx.font = `900 ${fontPx}px "Arial Black", Arial, sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
 
-  const activeCueDivs = document.querySelectorAll('#cue-block-inner .cue-block.active');
-  if (!activeCueDivs.length) return;
-  const activeDiv = activeCueDivs[0];
-  const subLines = Array.from(activeDiv.querySelectorAll('.sub-line, br')).filter(el => el.tagName !== 'BR');
-  const lineCount = activeDiv.querySelectorAll('.sub-line').length;
+  const subLines = Array.from(cueDiv.querySelectorAll('.stage-line'));
   const lineH = fontPx * 1.28;
-  const totalH = lineH * lineCount;
-  let lineIdx = 0;
+  const totalH = lineH * subLines.length;
 
-  activeDiv.querySelectorAll('.sub-line').forEach(subLine => {
-    const y = H / 2 - totalH / 2 + lineH * lineIdx + lineH / 2;
+  subLines.forEach((subLine, li) => {
+    const y = H/2 - totalH/2 + lineH*li + lineH/2;
     const chars = Array.from(subLine.querySelectorAll('.char'));
-    const fullText = chars.map(c => c.textContent).join('');
-    const totalW = ctx.measureText(fullText).width;
-    // clamp to canvas width
-    let scale = 1;
-    if (totalW > W * 0.96) scale = (W * 0.96) / totalW;
-    let x = W / 2 - (totalW * scale) / 2;
+    const fullText = chars.map(c=>c.textContent).join('');
+    const tw = ctx.measureText(fullText).width;
+    const scale = tw > W*0.96 ? (W*0.96)/tw : 1;
     ctx.save();
-    if (scale < 1) { ctx.scale(scale, scale); x = x / scale; }
-
+    if (scale<1) ctx.scale(scale,1);
+    let x = (scale<1 ? W/scale : W)/2 - tw/2;
     chars.forEach(charEl => {
-      const ch = charEl.textContent;
-      const isHL = charEl.classList.contains('highlighted');
-      const cw = ctx.measureText(ch).width;
-      const cx = x + cw / 2;
-      // outline
-      [[-2,-2],[2,-2],[-2,2],[2,2],[0,3]].forEach(([ox,oy]) => {
-        ctx.fillStyle = '#000'; ctx.fillText(ch, cx+ox, y/scale+oy);
-      });
-      ctx.fillStyle = isHL ? '#FFE600' : '#FFFFFF';
-      ctx.fillText(ch, cx, y / scale);
-      x += cw;
+      const ch = charEl.textContent, cw = ctx.measureText(ch).width, cx = x+cw/2;
+      [[-2,-2],[2,-2],[-2,2],[2,2],[0,3]].forEach(([ox,oy]) => { ctx.fillStyle='#000'; ctx.fillText(ch,cx+ox,y+oy); });
+      ctx.fillStyle = charEl.classList.contains('hl') ? '#FFE600' : '#FFF';
+      ctx.fillText(ch,cx,y);
+      x+=cw;
     });
     ctx.restore();
-    lineIdx++;
   });
 }
 
 function startCanvasLoop() {
-  function loop() {
-    if (!isRecording) return;
-    drawToCanvas();
-    recRafId = setTimeout(loop, 1000 / 25);
-  }
+  function loop() { if (!isRecording) return; drawToCanvas(); recRafId = setTimeout(loop, 1000/25); }
   loop();
 }
 
-// ── RECORD ──
-recordBtn.addEventListener('click', async () => {
+// ══════════════════════════════════════════════
+// RECORD BUTTON
+// ══════════════════════════════════════════════
+document.getElementById('record-btn').addEventListener('click', async () => {
   if (isRecording) { stopRecording(); return; }
 
   const stageRect = stage.getBoundingClientRect();
-  const capH = 480, capW = Math.round(capH * stageRect.width / stageRect.height);
-  recCanvas.width = capW; recCanvas.height = capH;
+  const capH=480, capW=Math.round(capH*stageRect.width/stageRect.height);
+  recCanvas.width=capW; recCanvas.height=capH;
   drawToCanvas();
 
   let stream;
@@ -618,60 +684,49 @@ recordBtn.addEventListener('click', async () => {
   catch(e) { alert('Recording not supported. Use Chrome or Edge.'); return; }
 
   const mimeType = ['video/mp4;codecs=avc1','video/mp4','video/webm;codecs=vp9','video/webm']
-    .find(t => MediaRecorder.isTypeSupported(t)) || 'video/webm';
-  const ext = mimeType.startsWith('video/mp4') ? 'mp4' : 'webm';
+    .find(t=>MediaRecorder.isTypeSupported(t))||'video/webm';
+  const ext = mimeType.startsWith('video/mp4')?'mp4':'webm';
 
-  recordedChunks = [];
-  try { mediaRecorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 3000000 }); }
-  catch(e) { mediaRecorder = new MediaRecorder(stream); }
+  recordedChunks=[];
+  try { mediaRecorder=new MediaRecorder(stream,{mimeType,videoBitsPerSecond:3000000}); }
+  catch(e) { mediaRecorder=new MediaRecorder(stream); }
 
-  mediaRecorder.ondataavailable = e => { if (e.data?.size > 0) recordedChunks.push(e.data); };
-  mediaRecorder.onstop = () => {
+  mediaRecorder.ondataavailable=e=>{ if(e.data?.size>0) recordedChunks.push(e.data); };
+  mediaRecorder.onstop=()=>{
     clearInterval(recTimerInterval); clearTimeout(recRafId);
-    isRecording = false;
-    recordBtn.textContent = '⏺ Record'; recordBtn.classList.remove('recording');
-    recTimerEl.classList.remove('active');
-    const blob = new Blob(recordedChunks, { type: mimeType });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = 'green-screen-lyrics.' + ext;
+    isRecording=false;
+    document.getElementById('record-btn').textContent='⏺ Record Green Screen';
+    document.getElementById('record-btn').classList.remove('recording');
+    document.getElementById('rec-timer').classList.remove('active');
+    document.getElementById('rec-status').textContent='';
+    const blob=new Blob(recordedChunks,{type:mimeType});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url; a.download='green-screen-synced.'+ext;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 8000);
+    setTimeout(()=>URL.revokeObjectURL(url),8000);
   };
 
-  isRecording = true; mediaRecorder.start(200); startCanvasLoop();
-  recStartTime = Date.now();
-  recTimerInterval = setInterval(() => {
-    const s = Math.floor((Date.now()-recStartTime)/1000);
-    recTimerEl.textContent = String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
-  }, 1000);
-  recordBtn.textContent = '⏹ Stop & Save'; recordBtn.classList.add('recording');
-  recTimerEl.classList.add('active'); recTimerEl.textContent = '00:00';
+  isRecording=true; mediaRecorder.start(200); startCanvasLoop();
+  // auto-start preview playback too
+  startPreview();
+
+  recStartTime=Date.now();
+  recTimerInterval=setInterval(()=>{
+    const s=Math.floor((Date.now()-recStartTime)/1000);
+    document.getElementById('rec-timer').textContent=String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
+  },1000);
+  document.getElementById('record-btn').textContent='⏹ Stop & Save';
+  document.getElementById('record-btn').classList.add('recording');
+  document.getElementById('rec-timer').classList.add('active');
+  document.getElementById('rec-timer').textContent='00:00';
+  document.getElementById('rec-status').textContent='Recording canvas + playing audio...';
 });
 
 function stopRecording() {
-  if (mediaRecorder?.state !== 'inactive') mediaRecorder.stop();
+  if (mediaRecorder?.state!=='inactive') mediaRecorder.stop();
+  stopPreview();
 }
-
-function updateNav() {
-  cueInfoEl.textContent = cues.length ? 'Cue '+(currentCue+1)+' / '+cues.length : 'Load lyrics to begin';
-}
-function updateProgress() {
-  progressBar.style.width = (allUnits.length ? unitIndex/allUnits.length*100 : 0)+'%';
-}
-
-// Init
-setStageHeight();
-
-// After buildDOM, rebuild unit refs (need DOM to be ready)
-const _origLoad = loadBtn.onclick;
-document.addEventListener('DOMContentLoaded', setStageHeight);
-
-// Patch load to also rebuild unit refs after DOM build
-const origLoadHandler = loadBtn.addEventListener;
-loadBtn.addEventListener('click', () => {
-  setTimeout(rebuildUnitRefs, 50);
-}, true);
 </script>
 </body>
 </html>
