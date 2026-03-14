@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Lyric Subtitle Tool</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: 'Segoe UI', sans-serif; background: #1a1a2e; color: #eee; overflow-x: hidden; }
@@ -26,59 +25,34 @@
   button:disabled { opacity: 0.35; cursor: not-allowed; }
   button.sec { background: #0f3460; border: 1px solid #e94560; }
   button.sec:hover:not(:disabled) { background: #1a4a80; }
-
-  /* play/pause toggle */
   #playpause-btn { min-width: 90px; }
   #playpause-btn.is-playing { background: #c0392b; }
-  #playpause-btn.is-playing:hover { background: #a93226; }
-
-  /* record */
   #record-btn { background: #1a7a4a; border: 1px solid #2ecc71; }
   #record-btn.recording { background: #c0392b; border-color: #e74c3c; animation: pulse 1s infinite; }
   #record-btn:hover:not(:disabled):not(.recording) { background: #145e38; }
   @keyframes pulse { 0%,100%{box-shadow:0 0 6px 2px rgba(231,76,60,0.4)} 50%{box-shadow:0 0 14px 6px rgba(231,76,60,0.8)} }
-
   #rec-timer { font-size: 0.78rem; color: #e74c3c; font-weight: 700; margin-left: 2px; display: none; }
   #rec-timer.active { display: inline; }
   #cue-info { font-size: 0.78rem; color: #888; margin-left: 4px; }
+  #hint { font-size: 0.7rem; color: #555; margin-left: 6px; }
   #progress-bar-wrap { background: #000; height: 3px; }
   #progress-bar { height: 100%; background: #e94560; width: 0%; transition: width 0.1s linear; }
-  #hint { font-size: 0.7rem; color: #555; margin-left: 6px; }
 
-  canvas#rec-canvas { display: none; }
-
-  /* STAGE */
-  #stage {
-    background: #00FF00;
-    width: 100vw;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-    overflow: hidden;
-  }
+  /* The visible green stage — DOM based for display */
+  #stage { background: #00FF00; width: 100vw; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; }
   #subtitle-block { text-align: center; width: 92%; padding: 0; }
   .cue-block { display: none; line-height: 1.25; }
   .sub-line { display: block; }
-
-  .char {
-    display: inline;
-    font-family: 'Arial Black','Arial',sans-serif;
-    font-weight: 900;
-    text-transform: uppercase;
-    color: #ffffff;
-    text-shadow: 2px 2px 0 #000,-2px 2px 0 #000,2px -2px 0 #000,-2px -2px 0 #000,0 3px 8px rgba(0,0,0,0.9);
-    transition: color 0.05s ease;
-    cursor: pointer;
-  }
-  .char:hover { opacity: 0.85; }
+  .char { display: inline; font-family: 'Arial Black','Arial',sans-serif; font-weight: 900; text-transform: uppercase; color: #ffffff; text-shadow: 2px 2px 0 #000,-2px 2px 0 #000,2px -2px 0 #000,-2px -2px 0 #000,0 3px 8px rgba(0,0,0,0.9); transition: color 0.05s ease; cursor: pointer; }
+  .char:not(.space):hover { opacity: 0.8; }
   .char.highlighted { color: #FFE600; }
   .char.space { display: inline; cursor: default; }
+
+  /* Hidden recording canvas */
+  #rec-canvas { display: none; position: fixed; top: 0; left: 0; }
 </style>
 </head>
 <body>
-
-<canvas id="rec-canvas"></canvas>
 
 <div id="editor">
   <h1>🎵 Lyric Subtitle Tool</h1>
@@ -87,10 +61,7 @@
   <div class="controls-grid">
     <div class="ctrl-group">
       <label>Highlight Mode</label>
-      <select id="mode">
-        <option value="word">Word by Word</option>
-        <option value="char">Character by Character</option>
-      </select>
+      <select id="mode"><option value="word">Word by Word</option><option value="char">Character by Character</option></select>
     </div>
     <div class="ctrl-group">
       <label>Word Speed</label>
@@ -123,9 +94,7 @@
     <div class="ctrl-group">
       <label>Lines per Cue</label>
       <select id="lines-per-cue">
-        <option value="1">1 line</option>
-        <option value="2" selected>2 lines</option>
-        <option value="3">3 lines</option>
+        <option value="1">1 line</option><option value="2" selected>2 lines</option><option value="3">3 lines</option>
       </select>
     </div>
   </div>
@@ -138,7 +107,7 @@
     <button id="record-btn" disabled>⏺ Record</button>
     <span id="rec-timer">00:00</span>
     <span id="cue-info">Load lyrics to begin</span>
-    <span id="hint">💡 Click any letter to start from there · Space = play/pause</span>
+    <span id="hint">💡 Click any letter to jump there · Space = play/pause</span>
   </div>
 </div>
 
@@ -149,57 +118,70 @@
   </div>
 </div>
 
+<!-- Hidden canvas that MediaRecorder captures from — drawn independently of DOM -->
+<canvas id="rec-canvas"></canvas>
+
 <script>
-// ── Stage height ──
+// ─────────────────────────────────────────────
+// STAGE HEIGHT
+// ─────────────────────────────────────────────
 function setStageHeight() {
   const edH = document.getElementById('editor').offsetHeight +
               document.getElementById('progress-bar-wrap').offsetHeight;
-  document.getElementById('stage').style.height = (window.innerHeight - edH) + 'px';
+  stage.style.height = (window.innerHeight - edH) + 'px';
 }
 window.addEventListener('resize', setStageHeight);
-setStageHeight();
 
-// ── DOM refs ──
-const lyricsInput   = document.getElementById('lyrics-input');
-const modeEl        = document.getElementById('mode');
-const wordSpeedEl   = document.getElementById('word-speed');
-const wordSpeedVal  = document.getElementById('word-speed-val');
-const charSpeedEl   = document.getElementById('char-speed');
-const charSpeedVal  = document.getElementById('char-speed-val');
-const cuePauseEl    = document.getElementById('cue-pause');
-const cuePauseVal   = document.getElementById('cue-pause-val');
-const fontSizeEl    = document.getElementById('font-size');
-const fontSizeVal   = document.getElementById('font-size-val');
-const linesPerCue   = document.getElementById('lines-per-cue');
-const loadBtn       = document.getElementById('load-btn');
-const playpauseBtn  = document.getElementById('playpause-btn');
-const resetBtn      = document.getElementById('reset-btn');
-const prevBtn       = document.getElementById('prev-btn');
-const nextBtn       = document.getElementById('next-btn');
-const recordBtn     = document.getElementById('record-btn');
-const recTimer      = document.getElementById('rec-timer');
-const cueInfo       = document.getElementById('cue-info');
-const block         = document.getElementById('subtitle-block');
-const progressBar   = document.getElementById('progress-bar');
-const stage         = document.getElementById('stage');
-const recCanvas     = document.getElementById('rec-canvas');
+// ─────────────────────────────────────────────
+// DOM REFS
+// ─────────────────────────────────────────────
+const lyricsInput  = document.getElementById('lyrics-input');
+const modeEl       = document.getElementById('mode');
+const wordSpeedEl  = document.getElementById('word-speed');
+const wordSpeedVal = document.getElementById('word-speed-val');
+const charSpeedEl  = document.getElementById('char-speed');
+const charSpeedVal = document.getElementById('char-speed-val');
+const cuePauseEl   = document.getElementById('cue-pause');
+const cuePauseVal  = document.getElementById('cue-pause-val');
+const fontSizeEl   = document.getElementById('font-size');
+const fontSizeVal  = document.getElementById('font-size-val');
+const linesPerCue  = document.getElementById('lines-per-cue');
+const loadBtn      = document.getElementById('load-btn');
+const playpauseBtn = document.getElementById('playpause-btn');
+const resetBtn     = document.getElementById('reset-btn');
+const prevBtn      = document.getElementById('prev-btn');
+const nextBtn      = document.getElementById('next-btn');
+const recordBtn    = document.getElementById('record-btn');
+const recTimerEl   = document.getElementById('rec-timer');
+const cueInfo      = document.getElementById('cue-info');
+const block        = document.getElementById('subtitle-block');
+const progressBar  = document.getElementById('progress-bar');
+const stage        = document.getElementById('stage');
+const recCanvas    = document.getElementById('rec-canvas');
 
-// ── State ──
+// ─────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────
 let cues = [], allUnits = [], unitIndex = 0, currentCue = 0;
-let playing = false, timer = null;
-let mediaRecorder = null, recordedChunks = [], isRecording = false;
-let recStartTime = 0, recTimerInterval = null, rafId = null;
+let playing = false, playTimer = null;
+let isRecording = false, mediaRecorder = null, recordedChunks = [];
+let recRafId = null, recTimerInterval = null, recStartTime = 0;
 
-// ── Sliders ──
+// ─────────────────────────────────────────────
+// SLIDERS
+// ─────────────────────────────────────────────
 wordSpeedEl.addEventListener('input', () => wordSpeedVal.textContent = wordSpeedEl.value + ' ms');
 charSpeedEl.addEventListener('input', () => charSpeedVal.textContent = charSpeedEl.value + ' ms');
 cuePauseEl.addEventListener('input',  () => cuePauseVal.textContent  = cuePauseEl.value  + ' ms');
 fontSizeEl.addEventListener('input',  () => {
   fontSizeVal.textContent = fontSizeEl.value + ' vw';
   document.querySelectorAll('.char').forEach(c => c.style.fontSize = fontSizeEl.value + 'vw');
+  scheduleCanvasDraw();
 });
 
-// ── LOAD ──
+// ─────────────────────────────────────────────
+// LOAD
+// ─────────────────────────────────────────────
 loadBtn.addEventListener('click', () => {
   const raw = lyricsInput.value.trim();
   if (!raw) return;
@@ -214,7 +196,9 @@ loadBtn.addEventListener('click', () => {
   setStageHeight();
 });
 
-// ── BUILD DOM ──
+// ─────────────────────────────────────────────
+// BUILD DOM
+// ─────────────────────────────────────────────
 function buildDOM() {
   block.innerHTML = '';
   allUnits = [];
@@ -239,10 +223,9 @@ function buildDOM() {
           const span = document.createElement('span');
           span.className = 'char'; span.textContent = word; span.style.fontSize = fs;
           lineSpan.appendChild(span);
-          const unitIdx = allUnits.length;
-          allUnits.push({ el: span, cueIdx: cIdx, unitIdx });
-          // click to jump here
-          span.addEventListener('click', () => clickJumpTo(unitIdx));
+          const ui = allUnits.length;
+          allUnits.push({ el: span, cueIdx: cIdx, text: word });
+          span.addEventListener('click', () => clickJumpTo(ui));
         });
       } else {
         for (let ci = 0; ci < line.length; ci++) {
@@ -252,9 +235,9 @@ function buildDOM() {
           span.textContent = ch; span.style.fontSize = fs;
           lineSpan.appendChild(span);
           if (ch !== ' ') {
-            const unitIdx = allUnits.length;
-            allUnits.push({ el: span, cueIdx: cIdx, unitIdx });
-            span.addEventListener('click', () => clickJumpTo(unitIdx));
+            const ui = allUnits.length;
+            allUnits.push({ el: span, cueIdx: cIdx, text: ch });
+            span.addEventListener('click', () => clickJumpTo(ui));
           }
         }
       }
@@ -262,91 +245,79 @@ function buildDOM() {
       cueDiv.appendChild(lineSpan);
       if (lIdx < lines.length - 1) cueDiv.appendChild(document.createElement('br'));
     });
-
     block.appendChild(cueDiv);
   });
 
   showCue(0);
 }
 
-// ── Click on a character/word — jump there & toggle play ──
-function clickJumpTo(idx) {
-  clearTimeout(timer);
-  // clear highlights up to this point, keep already-highlighted ones before
-  document.querySelectorAll('.char').forEach(c => c.classList.remove('highlighted'));
-  // highlight everything before idx
-  for (let i = 0; i < idx; i++) allUnits[i].el.classList.add('highlighted');
-
-  unitIndex = idx;
-  const targetCue = allUnits[idx].cueIdx;
-  showCue(targetCue);
-  updateNav();
-  updateProgress();
-
-  // toggle play
-  if (playing) {
-    // was playing — pause here
-    playing = false;
-    updatePlayBtn();
-  } else {
-    // start playing from here
-    playing = true;
-    updatePlayBtn();
-    tick();
-  }
-}
-
+// ─────────────────────────────────────────────
+// CUE DISPLAY
+// ─────────────────────────────────────────────
 function showCue(idx) {
   document.querySelectorAll('.cue-block').forEach((el, i) => el.style.display = i === idx ? 'block' : 'none');
   currentCue = idx;
+  scheduleCanvasDraw();
 }
 
+// ─────────────────────────────────────────────
+// CLICK TO JUMP
+// ─────────────────────────────────────────────
+function clickJumpTo(idx) {
+  clearTimeout(playTimer);
+  document.querySelectorAll('.char').forEach(c => c.classList.remove('highlighted'));
+  for (let i = 0; i < idx; i++) allUnits[i].el.classList.add('highlighted');
+  unitIndex = idx;
+  showCue(allUnits[idx].cueIdx);
+  updateNav(); updateProgress();
+  if (playing) { tick(); }
+  else { playing = true; updatePlayBtn(); tick(); }
+}
+
+// ─────────────────────────────────────────────
+// RESET
+// ─────────────────────────────────────────────
 function resetState() {
-  playing = false; clearTimeout(timer); unitIndex = 0;
+  playing = false; clearTimeout(playTimer); unitIndex = 0;
   document.querySelectorAll('.char').forEach(c => c.classList.remove('highlighted'));
   if (cues.length) showCue(0);
-  updatePlayBtn();
-  updateProgress();
+  updatePlayBtn(); updateProgress();
 }
 
-function getSpeed() { return modeEl.value === 'char' ? parseInt(charSpeedEl.value) : parseInt(wordSpeedEl.value); }
+function getSpeed() {
+  return modeEl.value === 'char' ? parseInt(charSpeedEl.value) : parseInt(wordSpeedEl.value);
+}
 
-// ── PLAY/PAUSE toggle ──
-playpauseBtn.addEventListener('click', () => togglePlay());
+// ─────────────────────────────────────────────
+// PLAY / PAUSE
+// ─────────────────────────────────────────────
+playpauseBtn.addEventListener('click', togglePlay);
 
 function togglePlay() {
   if (!cues.length) return;
-  if (playing) {
-    playing = false;
-    clearTimeout(timer);
-  } else {
-    playing = true;
-    tick();
-  }
+  if (playing) { playing = false; clearTimeout(playTimer); }
+  else { playing = true; tick(); }
   updatePlayBtn();
 }
 
 function updatePlayBtn() {
-  if (playing) {
-    playpauseBtn.textContent = '⏸ Pause';
-    playpauseBtn.classList.add('is-playing');
-  } else {
-    playpauseBtn.textContent = '▶ Play';
-    playpauseBtn.classList.remove('is-playing');
-  }
+  playpauseBtn.textContent = playing ? '⏸ Pause' : '▶ Play';
+  playpauseBtn.classList.toggle('is-playing', playing);
 }
 
+// ─────────────────────────────────────────────
+// TICK — uses setTimeout so it NEVER drifts due to canvas work
+// The canvas drawing happens on rAF, completely separate
+// ─────────────────────────────────────────────
 function tick() {
   if (!playing) return;
-  if (unitIndex >= allUnits.length) {
-    playing = false; updatePlayBtn(); updateProgress(); return;
-  }
+  if (unitIndex >= allUnits.length) { playing = false; updatePlayBtn(); updateProgress(); return; }
 
   const entry = allUnits[unitIndex];
 
   if (entry.cueIdx !== currentCue) {
     playing = false;
-    timer = setTimeout(() => {
+    playTimer = setTimeout(() => {
       document.querySelectorAll('.char').forEach(c => c.classList.remove('highlighted'));
       showCue(entry.cueIdx); updateNav();
       playing = true; updatePlayBtn(); tick();
@@ -355,96 +326,187 @@ function tick() {
   }
 
   entry.el.classList.add('highlighted');
+  scheduleCanvasDraw(); // tell canvas to redraw — non-blocking
   unitIndex++; updateProgress();
-  timer = setTimeout(tick, getSpeed());
+  playTimer = setTimeout(tick, getSpeed()); // schedule next highlight independently
 }
 
-// ── RESET ──
+// ─────────────────────────────────────────────
+// PREV / NEXT
+// ─────────────────────────────────────────────
 resetBtn.addEventListener('click', () => {
-  clearTimeout(timer);
+  clearTimeout(playTimer);
   document.querySelectorAll('.char').forEach(c => c.classList.remove('highlighted'));
   unitIndex = 0; playing = false;
   if (cues.length) showCue(0);
   updatePlayBtn(); updateNav(); updateProgress();
 });
-
-// ── PREV / NEXT ──
 prevBtn.addEventListener('click', () => jumpToCue(Math.max(0, currentCue - 1)));
 nextBtn.addEventListener('click', () => jumpToCue(Math.min(cues.length - 1, currentCue + 1)));
 
 function jumpToCue(idx) {
-  playing = false; clearTimeout(timer);
+  playing = false; clearTimeout(playTimer);
   document.querySelectorAll('.char').forEach(c => c.classList.remove('highlighted'));
   unitIndex = allUnits.findIndex(u => u.cueIdx === idx);
   if (unitIndex < 0) unitIndex = 0;
   showCue(idx); updatePlayBtn(); updateNav(); updateProgress();
 }
 
-// ── SCROLL on stage ──
+// ─────────────────────────────────────────────
+// SCROLL — only changes visible cue, never stops playback
+// ─────────────────────────────────────────────
 let scrollAccum = 0;
 stage.addEventListener('wheel', e => {
   e.preventDefault(); scrollAccum += e.deltaY;
   if (Math.abs(scrollAccum) > 60) {
-    // only change visible cue — do NOT call jumpToCue which stops playback
     const target = scrollAccum > 0
       ? Math.min(cues.length - 1, currentCue + 1)
       : Math.max(0, currentCue - 1);
-    showCue(target);
-    updateNav();
+    showCue(target); updateNav();
     scrollAccum = 0;
   }
 }, { passive: false });
 
-// ── SPACEBAR ──
+// ─────────────────────────────────────────────
+// SPACEBAR
+// ─────────────────────────────────────────────
 document.addEventListener('keydown', e => {
   if (e.code === 'Space' && document.activeElement.tagName !== 'TEXTAREA') {
     e.preventDefault(); togglePlay();
   }
 });
 
-// ── RECORD — canvas capture → MP4 if supported, else webm ──
+// ─────────────────────────────────────────────
+// CANVAS RENDERER
+// Draws the current cue state onto recCanvas completely independently
+// of the highlight timer — uses requestAnimationFrame, never blocks tick()
+// ─────────────────────────────────────────────
+let canvasDrawPending = false;
+
+function scheduleCanvasDraw() {
+  if (!isRecording || canvasDrawPending) return;
+  canvasDrawPending = true;
+  requestAnimationFrame(drawToCanvas);
+}
+
+function drawToCanvas() {
+  canvasDrawPending = false;
+  if (!isRecording) return;
+
+  const ctx = recCanvas.getContext('2d');
+  const W = recCanvas.width;
+  const H = recCanvas.height;
+
+  // Green background
+  ctx.fillStyle = '#00FF00';
+  ctx.fillRect(0, 0, W, H);
+
+  if (!cues.length || !allUnits.length) return;
+
+  // Compute font size in px — fontSizeEl is in vw, convert relative to canvas width
+  const vw = W; // canvas width = our reference vw
+  const fontPx = Math.round(parseFloat(fontSizeEl.value) / 100 * vw);
+  const fontFamily = '"Arial Black", Arial, sans-serif';
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = `900 ${fontPx}px ${fontFamily}`;
+
+  // Get all units for current cue
+  const cueUnits = allUnits.filter(u => u.cueIdx === currentCue);
+  if (!cueUnits.length) return;
+
+  // Group by line using the DOM structure to get line breaks
+  // We'll measure and lay out line by line
+  const cueDiv = document.querySelectorAll('.cue-block')[currentCue];
+  if (!cueDiv) return;
+
+  const subLines = Array.from(cueDiv.querySelectorAll('.sub-line'));
+  const lineCount = subLines.length;
+  const lineHeight = fontPx * 1.3;
+  const totalH = lineHeight * lineCount;
+  const startY = H / 2 - totalH / 2 + lineHeight / 2;
+
+  subLines.forEach((subLine, li) => {
+    const y = startY + li * lineHeight;
+    const chars = Array.from(subLine.querySelectorAll('.char'));
+    if (!chars.length) return;
+
+    // Measure full line width
+    const fullText = chars.map(c => c.textContent).join('');
+    const totalWidth = ctx.measureText(fullText).width;
+    let x = W / 2 - totalWidth / 2;
+
+    chars.forEach(charEl => {
+      const ch = charEl.textContent;
+      const isHighlighted = charEl.classList.contains('highlighted');
+      const chWidth = ctx.measureText(ch).width;
+      const cx = x + chWidth / 2;
+
+      // Shadow (outline)
+      ctx.shadowColor = 'transparent';
+      ctx.fillStyle = '#000000';
+      const offsets = [[-2,-2],[2,-2],[-2,2],[2,2],[0,3]];
+      offsets.forEach(([ox,oy]) => {
+        ctx.fillText(ch, cx + ox, y + oy);
+      });
+
+      // Main color
+      ctx.fillStyle = isHighlighted ? '#FFE600' : '#FFFFFF';
+      ctx.fillText(ch, cx, y);
+
+      x += chWidth;
+    });
+  });
+}
+
+// rAF loop while recording to keep canvas live at ~25fps
+function startCanvasLoop() {
+  function loop() {
+    if (!isRecording) return;
+    drawToCanvas();
+    recRafId = setTimeout(loop, 1000 / 25); // 25fps using setTimeout to not hog rAF
+  }
+  loop();
+}
+
+// ─────────────────────────────────────────────
+// RECORD
+// ─────────────────────────────────────────────
 recordBtn.addEventListener('click', async () => {
   if (isRecording) { stopRecording(); return; }
 
+  // Canvas size: 480p maintaining 16:9
   const stageRect = stage.getBoundingClientRect();
   const aspect = stageRect.width / stageRect.height;
   const capH = 480;
   const capW = Math.round(capH * aspect);
-
   recCanvas.width  = capW;
   recCanvas.height = capH;
-  const ctx = recCanvas.getContext('2d');
 
-  let canvasStream;
-  try { canvasStream = recCanvas.captureStream(25); }
+  // Draw first frame
+  drawToCanvas();
+
+  let stream;
+  try { stream = recCanvas.captureStream(25); }
   catch(e) { alert('Recording not supported. Use Chrome or Edge.'); return; }
 
-  // prefer mp4, fallback to webm
-  const mimeType = [
-    'video/mp4;codecs=avc1',
-    'video/mp4',
-    'video/webm;codecs=vp9',
-    'video/webm;codecs=vp8',
-    'video/webm'
-  ].find(t => MediaRecorder.isTypeSupported(t)) || 'video/webm';
-
+  const mimeType = ['video/mp4;codecs=avc1','video/mp4','video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm']
+    .find(t => MediaRecorder.isTypeSupported(t)) || 'video/webm';
   const ext = mimeType.startsWith('video/mp4') ? 'mp4' : 'webm';
 
   recordedChunks = [];
-  try {
-    mediaRecorder = new MediaRecorder(canvasStream, { mimeType, videoBitsPerSecond: 3000000 });
-  } catch(e) {
-    mediaRecorder = new MediaRecorder(canvasStream);
-  }
+  try { mediaRecorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 3000000 }); }
+  catch(e) { mediaRecorder = new MediaRecorder(stream); }
 
-  mediaRecorder.ondataavailable = e => { if (e.data && e.data.size > 0) recordedChunks.push(e.data); };
+  mediaRecorder.ondataavailable = e => { if (e.data?.size > 0) recordedChunks.push(e.data); };
   mediaRecorder.onstop = () => {
     clearInterval(recTimerInterval);
+    clearTimeout(recRafId);
     isRecording = false;
     recordBtn.textContent = '⏺ Record';
     recordBtn.classList.remove('recording');
-    recTimer.classList.remove('active');
-    if (rafId) cancelAnimationFrame(rafId);
+    recTimerEl.classList.remove('active');
 
     const blob = new Blob(recordedChunks, { type: mimeType });
     const url  = URL.createObjectURL(blob);
@@ -456,52 +518,36 @@ recordBtn.addEventListener('click', async () => {
 
   isRecording = true;
   mediaRecorder.start(200);
-
-  // rAF capture loop — 25fps
-  let lastCapture = 0;
-  const fInterval = 1000 / 25;
-
-  async function captureFrame(ts) {
-    if (!isRecording) return;
-    rafId = requestAnimationFrame(captureFrame);
-    if (ts - lastCapture < fInterval) return;
-    lastCapture = ts;
-    try {
-      const tmp = await html2canvas(stage, {
-        backgroundColor: '#00FF00',
-        scale: capW / stageRect.width,
-        width: stageRect.width,
-        height: stageRect.height,
-        useCORS: true,
-        logging: false
-      });
-      ctx.drawImage(tmp, 0, 0, capW, capH);
-    } catch(e) { /* skip frame on error */ }
-  }
-  rafId = requestAnimationFrame(captureFrame);
+  startCanvasLoop(); // start the independent canvas draw loop
 
   recStartTime = Date.now();
   recTimerInterval = setInterval(() => {
-    const s = Math.floor((Date.now()-recStartTime)/1000);
-    recTimer.textContent = String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
+    const s = Math.floor((Date.now() - recStartTime) / 1000);
+    recTimerEl.textContent = String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
   }, 1000);
 
   recordBtn.textContent = '⏹ Stop & Save';
   recordBtn.classList.add('recording');
-  recTimer.classList.add('active');
-  recTimer.textContent = '00:00';
+  recTimerEl.classList.add('active');
+  recTimerEl.textContent = '00:00';
 });
 
 function stopRecording() {
   if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
 }
 
+// ─────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────
 function updateNav() {
-  cueInfo.textContent = cues.length ? 'Cue '+(currentCue+1)+' / '+cues.length : 'Load lyrics to begin';
+  cueInfo.textContent = cues.length ? 'Cue ' + (currentCue+1) + ' / ' + cues.length : 'Load lyrics to begin';
 }
 function updateProgress() {
-  progressBar.style.width = (allUnits.length ? unitIndex/allUnits.length*100 : 0) + '%';
+  progressBar.style.width = (allUnits.length ? unitIndex / allUnits.length * 100 : 0) + '%';
 }
+
+// Init
+setStageHeight();
 </script>
 </body>
 </html>
