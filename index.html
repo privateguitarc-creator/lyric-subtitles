@@ -72,7 +72,7 @@ audio { width:100%; border-radius:5px; }
 #rec-timer.on { display:inline; }
 
 /* STAGE */
-#stage-wrap { flex:1; overflow:hidden; position:relative; }
+#stage-wrap { flex:1; overflow:hidden; position:relative; min-height:0; }
 #stage { background:#00FF00; width:100%; height:100%; display:flex; align-items:center; justify-content:center; overflow:hidden; }
 #stage-inner { text-align:center; width:96%; line-height:1.25; }
 .cue-div { display:none; }
@@ -149,6 +149,7 @@ canvas { display:none; }
       <button id="r-stop" class="sec">⏹ Stop</button>
       <button id="r-record" class="grn">⏺ Record</button>
       <span id="rec-timer">00:00</span>
+      <button id="r-speeds-toggle" class="sec" style="margin-left:4px;" title="Show/hide per-line speed controls">⚡ Line Speeds</button>
       <div class="sl" style="margin-left:4px;"><label>Mode</label><select id="r-mode"><option value="word">Word</option><option value="char">Char</option></select></div>
       <div class="sl"><label>Word ms</label><input type="range" id="r-wsp" min="80" max="1500" value="350" step="20" style="width:80px;"><span class="vl" id="r-wsp-v">350</span></div>
       <div class="sl"><label>Char ms</label><input type="range" id="r-csp" min="20" max="800" value="100" step="10" style="width:80px;"><span class="vl" id="r-csp-v">100</span></div>
@@ -161,16 +162,28 @@ canvas { display:none; }
       <input type="range" id="seek-bar" min="0" max="100" value="0" step="0.1">
       <span id="time-label">0.0s / 0.0s</span>
     </div>
-    <!-- Per-line speed panel -->
-  <div id="line-speeds-panel" style="background:#080818;border-top:1px solid #0f3460;padding:4px 8px;max-height:150px;overflow-y:auto;display:none;">
-    <div style="font-size:0.62rem;color:#444;margin-bottom:3px;text-transform:uppercase;letter-spacing:0.3px;">⚡ Speed per line &nbsp;|&nbsp; 🐌 Left = Slow &nbsp; Right = Fast ⚡ &nbsp;|&nbsp; Click line to jump preview</div>
-    <div id="line-speeds-list"></div>
   </div>
-</div>
 
 <!-- Stage lives outside panel so it fills remaining space -->
 <div id="stage-wrap">
   <div id="stage"><div id="stage-inner"></div></div>
+  <!-- Speed panel floats over bottom of stage — toggle with button -->
+  <div id="line-speeds-panel" style="
+    position:absolute; bottom:0; left:0; right:0;
+    background:rgba(5,5,20,0.92);
+    border-top:2px solid #e94560;
+    padding:4px 10px 6px;
+    max-height:45%;
+    overflow-y:auto;
+    display:none;
+    z-index:10;
+    backdrop-filter:blur(4px);
+  ">
+    <div style="font-size:0.62rem;color:#888;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.3px;">
+      ⚡ Highlight Speed per Line &nbsp;|&nbsp; 🐌 Left=Slow &nbsp; Right=Fast ⚡ &nbsp;|&nbsp; Click line → jump preview
+    </div>
+    <div id="line-speeds-list"></div>
+  </div>
 </div>
 
 <canvas id="rec-canvas"></canvas>
@@ -871,8 +884,9 @@ function drawCanvas() {
 
     ctx.save();
     if (scale < 1) {
+      // scale uniformly from center so text doesn't get clipped
       ctx.translate(W/2, y);
-      ctx.scale(scale, 1);
+      ctx.scale(scale, scale);
       ctx.translate(-W/2, -y);
     }
 
@@ -881,9 +895,10 @@ function drawCanvas() {
       const txt = ch.textContent;
       const cw = ctx.measureText(txt).width;
       const cx = x + cw/2;
-      // black outline
+      // black outline — thicker at high res
+      const outl = Math.max(2, Math.round(fontPx * 0.06));
       ctx.fillStyle = '#000';
-      [[-2,-2],[2,-2],[-2,2],[2,2],[0,3]].forEach(([ox,oy]) => ctx.fillText(txt, cx+ox, y+oy));
+      [[-outl,-outl],[outl,-outl],[-outl,outl],[outl,outl],[0,outl*1.5]].forEach(([ox,oy]) => ctx.fillText(txt, cx+ox, y+oy));
       // colored fill
       ctx.fillStyle = ch.classList.contains('hl') ? '#FFE600' : '#FFFFFF';
       ctx.fillText(txt, cx, y);
@@ -911,7 +926,7 @@ document.getElementById('r-record').addEventListener('click', async () => {
   if (isRecording) { stopRecording(); return; }
 
   const stageEl = document.getElementById('stage');
-  const capH = 480, capW = Math.round(capH * stageEl.offsetWidth / stageEl.offsetHeight);
+  const capH = 1080, capW = Math.round(capH * stageEl.offsetWidth / stageEl.offsetHeight);
   recCanvas.width = capW; recCanvas.height = capH;
 
   // draw first frame so stream isn't blank
@@ -982,6 +997,16 @@ function stopRecording() {
   if (mediaRecorder?.state !== 'inactive') mediaRecorder.stop();
   stopPlayback();
 }
+
+// Line speeds panel toggle
+document.getElementById('r-speeds-toggle').addEventListener('click', () => {
+  const panel = document.getElementById('line-speeds-panel');
+  const btn   = document.getElementById('r-speeds-toggle');
+  const isOpen = panel.style.display !== 'none';
+  panel.style.display = isOpen ? 'none' : 'block';
+  btn.style.background = isOpen ? '' : '#1a4a80';
+  btn.style.borderColor = isOpen ? '' : '#4a9ae8';
+});
 
 // init
 goTab('setup');
