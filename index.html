@@ -172,16 +172,44 @@ canvas#rec-canvas { display:none; }
 <!-- TAB 3: PREVIEW & RECORD -->
 <!-- ══════════════════════════════════════════ -->
 <div class="panel" id="panel-record">
-  <div id="preview-controls">
-    <button id="preview-play-btn">▶ Preview</button>
-    <button id="preview-stop-btn" class="sec">⏹ Stop</button>
-    <button id="record-btn" class="green">⏺ Record Green Screen</button>
-    <span id="rec-timer">00:00</span>
-    <span id="rec-status" style="font-size:0.78rem;color:#888;margin-left:4px;"></span>
-    <div class="slider-row" style="margin-left:auto;">
-      <label style="margin:0;font-size:0.7rem;">Font</label>
-      <input type="range" id="font-size-preview" min="2" max="10" value="5.5" step="0.25" style="width:80px;">
-      <span class="val-label" id="font-size-preview-val">5.5vw</span>
+  <div id="preview-controls" style="flex-wrap:wrap;gap:6px 12px;">
+    <!-- Row 1: playback buttons -->
+    <div style="display:flex;gap:6px;align-items:center;width:100%;flex-wrap:wrap;">
+      <button id="preview-play-btn">▶ Preview</button>
+      <button id="preview-stop-btn" class="sec">⏹ Stop</button>
+      <button id="record-btn" class="green">⏺ Record Green Screen</button>
+      <span id="rec-timer">00:00</span>
+      <span id="rec-status" style="font-size:0.75rem;color:#888;margin-left:2px;"></span>
+    </div>
+    <!-- Row 2: all controls -->
+    <div style="display:flex;gap:10px 18px;align-items:center;flex-wrap:wrap;padding:4px 0 2px;">
+      <div class="slider-row">
+        <label style="margin:0;white-space:nowrap;">Mode</label>
+        <select id="hl-mode-preview" style="font-size:0.78rem;padding:3px 6px;">
+          <option value="word">Word</option>
+          <option value="char">Char</option>
+        </select>
+      </div>
+      <div class="slider-row">
+        <label style="margin:0;white-space:nowrap;">Word ms</label>
+        <input type="range" id="word-speed-preview" min="80" max="1500" value="350" step="20" style="width:90px;">
+        <span class="val-label" id="word-speed-preview-val" style="min-width:38px;">350</span>
+      </div>
+      <div class="slider-row">
+        <label style="margin:0;white-space:nowrap;">Char ms</label>
+        <input type="range" id="char-speed-preview" min="20" max="800" value="100" step="10" style="width:90px;">
+        <span class="val-label" id="char-speed-preview-val" style="min-width:38px;">100</span>
+      </div>
+      <div class="slider-row">
+        <label style="margin:0;white-space:nowrap;">Cue pause</label>
+        <input type="range" id="cue-pause-preview" min="0" max="3000" value="300" step="50" style="width:90px;">
+        <span class="val-label" id="cue-pause-preview-val" style="min-width:38px;">300ms</span>
+      </div>
+      <div class="slider-row">
+        <label style="margin:0;white-space:nowrap;">Font</label>
+        <input type="range" id="font-size-preview" min="2" max="10" value="5.5" step="0.25" style="width:90px;">
+        <span class="val-label" id="font-size-preview-val" style="min-width:42px;">5.5vw</span>
+      </div>
     </div>
   </div>
   <div id="progress-bar-wrap"><div id="progress-bar"></div></div>
@@ -231,7 +259,25 @@ document.querySelectorAll('.tab').forEach(tab => {
 function goTab(name) {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
   document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + name));
-  if (name === 'record') buildStage();
+  if (name === 'record') {
+    // sync preview controls from setup tab values
+    const syncSlider = (fromId, toId, labelId, suffix) => {
+      const fromEl = document.getElementById(fromId);
+      const toEl   = document.getElementById(toId);
+      if (fromEl && toEl) {
+        toEl.value = fromEl.value;
+        if (labelId) document.getElementById(labelId).textContent = fromEl.value + (suffix||'');
+      }
+    };
+    syncSlider('word-speed', 'word-speed-preview', 'word-speed-preview-val', '');
+    syncSlider('char-speed', 'char-speed-preview', 'char-speed-preview-val', '');
+    syncSlider('font-size',  'font-size-preview',  'font-size-preview-val',  'vw');
+    // sync mode
+    const modeSetup   = document.getElementById('hl-mode');
+    const modePreview = document.getElementById('hl-mode-preview');
+    if (modeSetup && modePreview) modePreview.value = modeSetup.value;
+    buildStage();
+  }
   setStageHeight();
 }
 
@@ -284,6 +330,15 @@ document.getElementById('font-size').addEventListener('input', e => document.get
 document.getElementById('font-size-preview').addEventListener('input', e => {
   document.getElementById('font-size-preview-val').textContent = e.target.value + 'vw';
   document.querySelectorAll('.char').forEach(c => c.style.fontSize = e.target.value + 'vw');
+});
+document.getElementById('word-speed-preview').addEventListener('input', e => {
+  document.getElementById('word-speed-preview-val').textContent = e.target.value;
+});
+document.getElementById('char-speed-preview').addEventListener('input', e => {
+  document.getElementById('char-speed-preview-val').textContent = e.target.value;
+});
+document.getElementById('cue-pause-preview').addEventListener('input', e => {
+  document.getElementById('cue-pause-preview-val').textContent = e.target.value + 'ms';
 });
 
 // ══════════════════════════════════════════════
@@ -453,8 +508,9 @@ const stageInner = document.getElementById('stage-inner');
 function buildStage() {
   stageInner.innerHTML = '';
   stageUnits = [];
-  const fs = document.getElementById('font-size').value + 'vw';
-  const mode = document.getElementById('hl-mode').value;
+  const fs = (document.getElementById('font-size-preview').value || document.getElementById('font-size').value) + 'vw';
+  const mode = document.getElementById('hl-mode-preview').value ||
+               document.getElementById('hl-mode').value;
 
   cues.forEach((cue, cIdx) => {
     const cueDiv = document.createElement('div');
@@ -598,9 +654,10 @@ function hlTick() {
   u.el.classList.add('hl');
   scheduleCanvasDraw();
   unitIdx++;
-  const speed = document.getElementById('hl-mode').value === 'char'
-    ? parseInt(document.getElementById('char-speed').value)
-    : parseInt(document.getElementById('word-speed').value);
+  const mode = document.getElementById('hl-mode-preview').value;
+  const speed = mode === 'char'
+    ? parseInt(document.getElementById('char-speed-preview').value)
+    : parseInt(document.getElementById('word-speed-preview').value);
   hlTimer = setTimeout(hlTick, speed);
 }
 
