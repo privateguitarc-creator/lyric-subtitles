@@ -13,7 +13,7 @@
   label { font-size: 0.68rem; color: #aaa; display: block; margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.4px; }
   textarea { width: 100%; height: 72px; background: #0f3460; border: 1px solid #e94560; border-radius: 5px; color: #fff; padding: 7px 10px; font-size: 0.85rem; resize: vertical; outline: none; margin-bottom: 8px; }
   textarea::placeholder { color: #555; }
-  .controls-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; margin-bottom: 8px; }
+  .controls-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; margin-bottom: 8px; }
   .ctrl-group { display: flex; flex-direction: column; gap: 3px; }
   .slider-row { display: flex; align-items: center; gap: 6px; }
   input[type=range] { flex: 1; accent-color: #e94560; }
@@ -34,34 +34,102 @@
   #rec-timer { font-size: 0.78rem; color: #e74c3c; font-weight: 700; margin-left: 2px; display: none; }
   #rec-timer.active { display: inline; }
   #cue-info { font-size: 0.78rem; color: #888; margin-left: 4px; }
-  #hint { font-size: 0.7rem; color: #555; margin-left: 6px; }
+  #hint { font-size: 0.68rem; color: #555; margin-left: 4px; }
   #progress-bar-wrap { background: #000; height: 3px; }
   #progress-bar { height: 100%; background: #e94560; width: 0%; transition: width 0.1s linear; }
 
-  /* The visible green stage — DOM based for display */
-  #stage { background: #00FF00; width: 100vw; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; }
-  #subtitle-block { text-align: center; width: 92%; padding: 0; }
-  .cue-block { display: none; line-height: 1.25; }
-  .sub-line { display: block; }
-  .char { display: inline; font-family: 'Arial Black','Arial',sans-serif; font-weight: 900; text-transform: uppercase; color: #ffffff; text-shadow: 2px 2px 0 #000,-2px 2px 0 #000,2px -2px 0 #000,-2px -2px 0 #000,0 3px 8px rgba(0,0,0,0.9); transition: color 0.05s ease; cursor: pointer; }
-  .char:not(.space):hover { opacity: 0.8; }
+  /* ── STAGE ── */
+  #stage {
+    background: #00FF00;
+    width: 100vw;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* ── GREEN SCREEN MODE: shows only active cue centered ── */
+  #stage.mode-cue #teleprompter-wrap { display: none; }
+  #stage.mode-cue #cue-display { display: flex; }
+
+  /* ── TELEPROMPTER MODE: scrolling all lyrics ── */
+  #stage.mode-teleprompter #cue-display { display: none; }
+  #stage.mode-teleprompter #teleprompter-wrap { display: block; }
+
+  /* CUE DISPLAY — centered single/double/triple line */
+  #cue-display {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    top: 0; left: 0;
+  }
+  #cue-block-inner {
+    text-align: center;
+    width: 96%;
+    padding: 0;
+    line-height: 1.22;
+  }
+  .cue-block { display: none; }
+  .cue-block.active { display: block; }
+  .sub-line { display: block; white-space: nowrap; }
+
+  /* TELEPROMPTER WRAP */
+  #teleprompter-wrap {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    position: relative;
+  }
+  #teleprompter-inner {
+    position: absolute;
+    width: 100%;
+    text-align: center;
+    padding: 0 4%;
+    /* top is set by JS for smooth scroll */
+  }
+  .tp-line {
+    display: block;
+    white-space: nowrap;
+    line-height: 1.3;
+    margin-bottom: 0.15em;
+  }
+  .tp-line.cue-gap {
+    height: 0.6em; /* gap between cue groups */
+  }
+
+  /* shared char styles */
+  .char {
+    display: inline;
+    font-family: 'Arial Black', Arial, sans-serif;
+    font-weight: 900;
+    text-transform: uppercase;
+    color: #ffffff;
+    text-shadow: 2px 2px 0 #000, -2px 2px 0 #000, 2px -2px 0 #000, -2px -2px 0 #000, 0 3px 8px rgba(0,0,0,0.9);
+    transition: color 0.05s ease;
+    cursor: pointer;
+  }
+  .char:not(.space):hover { opacity: 0.82; }
   .char.highlighted { color: #FFE600; }
   .char.space { display: inline; cursor: default; }
 
-  /* Hidden recording canvas */
-  #rec-canvas { display: none; position: fixed; top: 0; left: 0; }
+  canvas#rec-canvas { display: none; }
 </style>
 </head>
 <body>
 
 <div id="editor">
   <h1>🎵 Lyric Subtitle Tool</h1>
-  <label>Paste Lyrics</label>
-  <textarea id="lyrics-input" placeholder="SATGURU TERE CHARNON KI&#10;SATGURU TERE CHARNON KI&#10;&#10;AGAR DHOOL JO MIL JAAE&#10;&#10;SATGURU TERE CHARNON KI&#10;SATGURU TERE CHARNON KI&#10;&#10;Blank line = new cue"></textarea>
+  <label>Paste Lyrics — blank line between groups = new cue</label>
+  <textarea id="lyrics-input" placeholder="SATGURU TERE CHARNON KI&#10;SATGURU TERE CHARNON KI&#10;&#10;AGAR DHOOL JO MIL JAAE&#10;&#10;SATGURU TERE CHARNON KI&#10;SATGURU TERE CHARNON KI"></textarea>
   <div class="controls-grid">
     <div class="ctrl-group">
-      <label>Highlight Mode</label>
+      <label>Mode</label>
       <select id="mode"><option value="word">Word by Word</option><option value="char">Character by Character</option></select>
+    </div>
+    <div class="ctrl-group">
+      <label>Display</label>
+      <select id="display-mode"><option value="cue">Green Screen (cue)</option><option value="teleprompter">Teleprompter Scroll</option></select>
     </div>
     <div class="ctrl-group">
       <label>Word Speed</label>
@@ -80,8 +148,8 @@
     <div class="ctrl-group">
       <label>Cue Pause</label>
       <div class="slider-row">
-        <input type="range" id="cue-pause" min="0" max="4000" value="1200" step="100">
-        <span class="val-label" id="cue-pause-val">1200 ms</span>
+        <input type="range" id="cue-pause" min="0" max="3000" value="400" step="50">
+        <span class="val-label" id="cue-pause-val">400 ms</span>
       </div>
     </div>
     <div class="ctrl-group">
@@ -91,7 +159,6 @@
         <span class="val-label" id="font-size-val">5.5 vw</span>
       </div>
     </div>
-
   </div>
   <div class="btn-row">
     <button id="load-btn">⬆ Load</button>
@@ -102,69 +169,68 @@
     <button id="record-btn" disabled>⏺ Record</button>
     <span id="rec-timer">00:00</span>
     <span id="cue-info">Load lyrics to begin</span>
-    <span id="hint">💡 Click any letter to jump there · Space = play/pause</span>
+    <span id="hint">💡 Click any letter to jump · Space = play/pause</span>
   </div>
 </div>
 
 <div id="progress-bar-wrap"><div id="progress-bar"></div></div>
-<div id="stage">
-  <div id="subtitle-block">
-    <span class="char" style="font-size:4vw;color:#009900;cursor:default;">PASTE LYRICS &amp; CLICK LOAD</span>
+
+<div id="stage" class="mode-cue">
+  <!-- CUE MODE -->
+  <div id="cue-display">
+    <div id="cue-block-inner"></div>
+  </div>
+  <!-- TELEPROMPTER MODE -->
+  <div id="teleprompter-wrap">
+    <div id="teleprompter-inner"></div>
   </div>
 </div>
 
-<!-- Hidden canvas that MediaRecorder captures from — drawn independently of DOM -->
 <canvas id="rec-canvas"></canvas>
 
 <script>
-// ─────────────────────────────────────────────
-// STAGE HEIGHT
-// ─────────────────────────────────────────────
+// ── Stage height ──
+const stage = document.getElementById('stage');
 function setStageHeight() {
   const edH = document.getElementById('editor').offsetHeight +
               document.getElementById('progress-bar-wrap').offsetHeight;
   stage.style.height = (window.innerHeight - edH) + 'px';
 }
-window.addEventListener('resize', setStageHeight);
+window.addEventListener('resize', () => { setStageHeight(); });
 
-// ─────────────────────────────────────────────
-// DOM REFS
-// ─────────────────────────────────────────────
-const lyricsInput  = document.getElementById('lyrics-input');
-const modeEl       = document.getElementById('mode');
-const wordSpeedEl  = document.getElementById('word-speed');
-const wordSpeedVal = document.getElementById('word-speed-val');
-const charSpeedEl  = document.getElementById('char-speed');
-const charSpeedVal = document.getElementById('char-speed-val');
-const cuePauseEl   = document.getElementById('cue-pause');
-const cuePauseVal  = document.getElementById('cue-pause-val');
-const fontSizeEl   = document.getElementById('font-size');
-const fontSizeVal  = document.getElementById('font-size-val');
-const linesPerCue  = document.getElementById('lines-per-cue');
-const loadBtn      = document.getElementById('load-btn');
-const playpauseBtn = document.getElementById('playpause-btn');
-const resetBtn     = document.getElementById('reset-btn');
-const prevBtn      = document.getElementById('prev-btn');
-const nextBtn      = document.getElementById('next-btn');
-const recordBtn    = document.getElementById('record-btn');
-const recTimerEl   = document.getElementById('rec-timer');
-const cueInfo      = document.getElementById('cue-info');
-const block        = document.getElementById('subtitle-block');
-const progressBar  = document.getElementById('progress-bar');
-const stage        = document.getElementById('stage');
-const recCanvas    = document.getElementById('rec-canvas');
+// ── DOM refs ──
+const lyricsInput   = document.getElementById('lyrics-input');
+const modeEl        = document.getElementById('mode');
+const displayModeEl = document.getElementById('display-mode');
+const wordSpeedEl   = document.getElementById('word-speed');
+const wordSpeedVal  = document.getElementById('word-speed-val');
+const charSpeedEl   = document.getElementById('char-speed');
+const charSpeedVal  = document.getElementById('char-speed-val');
+const cuePauseEl    = document.getElementById('cue-pause');
+const cuePauseVal   = document.getElementById('cue-pause-val');
+const fontSizeEl    = document.getElementById('font-size');
+const fontSizeVal   = document.getElementById('font-size-val');
+const loadBtn       = document.getElementById('load-btn');
+const playpauseBtn  = document.getElementById('playpause-btn');
+const resetBtn      = document.getElementById('reset-btn');
+const prevBtn       = document.getElementById('prev-btn');
+const nextBtn       = document.getElementById('next-btn');
+const recordBtn     = document.getElementById('record-btn');
+const recTimerEl    = document.getElementById('rec-timer');
+const cueInfoEl     = document.getElementById('cue-info');
+const progressBar   = document.getElementById('progress-bar');
+const cueBlockInner = document.getElementById('cue-block-inner');
+const tpInner       = document.getElementById('teleprompter-inner');
+const recCanvas     = document.getElementById('rec-canvas');
 
-// ─────────────────────────────────────────────
-// STATE
-// ─────────────────────────────────────────────
+// ── State ──
 let cues = [], allUnits = [], unitIndex = 0, currentCue = 0;
 let playing = false, playTimer = null;
 let isRecording = false, mediaRecorder = null, recordedChunks = [];
 let recRafId = null, recTimerInterval = null, recStartTime = 0;
+let tpTargetY = 0, tpCurrentY = 0, tpAnimId = null;
 
-// ─────────────────────────────────────────────
-// SLIDERS
-// ─────────────────────────────────────────────
+// ── Sliders ──
 wordSpeedEl.addEventListener('input', () => wordSpeedVal.textContent = wordSpeedEl.value + ' ms');
 charSpeedEl.addEventListener('input', () => charSpeedVal.textContent = charSpeedEl.value + ' ms');
 cuePauseEl.addEventListener('input',  () => cuePauseVal.textContent  = cuePauseEl.value  + ' ms');
@@ -174,37 +240,37 @@ fontSizeEl.addEventListener('input',  () => {
   scheduleCanvasDraw();
 });
 
-// ─────────────────────────────────────────────
-// LOAD
-// ─────────────────────────────────────────────
+// ── Display mode switch ──
+displayModeEl.addEventListener('change', () => {
+  stage.className = displayModeEl.value === 'teleprompter' ? 'mode-teleprompter' : 'mode-cue';
+  if (displayModeEl.value === 'teleprompter') scrollTpToCue(currentCue, true);
+});
+
+// ── LOAD ──
 loadBtn.addEventListener('click', () => {
   const raw = lyricsInput.value.trim();
   if (!raw) return;
-  // Split into cues by blank lines — each group of non-empty lines = one cue
   cues = [];
   let current = [];
   raw.split('\n').forEach(line => {
     const t = line.trim();
-    if (t === '') {
-      if (current.length) { cues.push(current); current = []; }
-    } else {
-      current.push(t);
-    }
+    if (t === '') { if (current.length) { cues.push(current); current = []; } }
+    else current.push(t);
   });
   if (current.length) cues.push(current);
   if (!cues.length) return;
-  buildDOM();
+
+  buildCueDOM();
+  buildTeleprompterDOM();
   resetState();
   [playpauseBtn, resetBtn, prevBtn, nextBtn, recordBtn].forEach(b => b.disabled = false);
   updateNav();
   setStageHeight();
 });
 
-// ─────────────────────────────────────────────
-// BUILD DOM
-// ─────────────────────────────────────────────
-function buildDOM() {
-  block.innerHTML = '';
+// ── BUILD CUE DOM ──
+function buildCueDOM() {
+  cueBlockInner.innerHTML = '';
   allUnits = [];
   const fs = fontSizeEl.value + 'vw';
   const mode = modeEl.value;
@@ -212,78 +278,178 @@ function buildDOM() {
   cues.forEach((lines, cIdx) => {
     const cueDiv = document.createElement('div');
     cueDiv.className = 'cue-block';
+    cueDiv.dataset.cue = cIdx;
 
     lines.forEach((line, lIdx) => {
       const lineSpan = document.createElement('span');
       lineSpan.className = 'sub-line';
-
-      if (mode === 'word') {
-        line.split(/\s+/).forEach((word, wi) => {
-          if (wi > 0) {
-            const sp = document.createElement('span');
-            sp.className = 'char space'; sp.textContent = ' '; sp.style.fontSize = fs;
-            lineSpan.appendChild(sp);
-          }
-          const span = document.createElement('span');
-          span.className = 'char'; span.textContent = word; span.style.fontSize = fs;
-          lineSpan.appendChild(span);
-          const ui = allUnits.length;
-          allUnits.push({ el: span, cueIdx: cIdx, text: word });
-          span.addEventListener('click', () => clickJumpTo(ui));
-        });
-      } else {
-        for (let ci = 0; ci < line.length; ci++) {
-          const ch = line[ci];
-          const span = document.createElement('span');
-          span.className = ch === ' ' ? 'char space' : 'char';
-          span.textContent = ch; span.style.fontSize = fs;
-          lineSpan.appendChild(span);
-          if (ch !== ' ') {
-            const ui = allUnits.length;
-            allUnits.push({ el: span, cueIdx: cIdx, text: ch });
-            span.addEventListener('click', () => clickJumpTo(ui));
-          }
-        }
-      }
-
+      buildLineSpans(lineSpan, line, cIdx, fs, mode);
       cueDiv.appendChild(lineSpan);
       if (lIdx < lines.length - 1) cueDiv.appendChild(document.createElement('br'));
     });
-    block.appendChild(cueDiv);
-  });
 
-  showCue(0);
+    cueBlockInner.appendChild(cueDiv);
+  });
 }
 
-// ─────────────────────────────────────────────
-// CUE DISPLAY
-// ─────────────────────────────────────────────
+// ── BUILD TELEPROMPTER DOM ──
+function buildTeleprompterDOM() {
+  tpInner.innerHTML = '';
+  const fs = fontSizeEl.value + 'vw';
+  const mode = modeEl.value;
+
+  cues.forEach((lines, cIdx) => {
+    if (cIdx > 0) {
+      // gap between cues
+      const gap = document.createElement('span');
+      gap.className = 'tp-line cue-gap';
+      tpInner.appendChild(gap);
+    }
+    lines.forEach(line => {
+      const lineSpan = document.createElement('span');
+      lineSpan.className = 'tp-line';
+      lineSpan.dataset.cue = cIdx;
+      buildLineSpans(lineSpan, line, cIdx, fs, mode);
+      tpInner.appendChild(lineSpan);
+    });
+  });
+}
+
+// ── SHARED: build char/word spans into a container ──
+function buildLineSpans(container, line, cIdx, fs, mode) {
+  if (mode === 'word') {
+    line.split(/\s+/).forEach((word, wi) => {
+      if (wi > 0) {
+        const sp = document.createElement('span');
+        sp.className = 'char space'; sp.textContent = ' '; sp.style.fontSize = fs;
+        container.appendChild(sp);
+      }
+      const span = document.createElement('span');
+      span.className = 'char'; span.textContent = word; span.style.fontSize = fs;
+      container.appendChild(span);
+      const ui = allUnits.length;
+      allUnits.push({ cueIdx: cIdx });
+      span.addEventListener('click', () => clickJumpTo(ui));
+    });
+  } else {
+    for (let ci = 0; ci < line.length; ci++) {
+      const ch = line[ci];
+      const span = document.createElement('span');
+      span.className = ch === ' ' ? 'char space' : 'char';
+      span.textContent = ch; span.style.fontSize = fs;
+      container.appendChild(span);
+      if (ch !== ' ') {
+        const ui = allUnits.length;
+        allUnits.push({ cueIdx: cIdx });
+        span.addEventListener('click', () => clickJumpTo(ui));
+      }
+    }
+  }
+}
+
+// ── After building, allUnits only has cueIdx — we need el refs ──
+// Rebuild allUnits properly with element refs after DOM is built
+function rebuildUnitRefs() {
+  // Get all non-space chars in order from both cue DOM and tp DOM
+  // We use cue DOM as the source of truth for highlighting
+  allUnits = [];
+  document.querySelectorAll('#cue-block-inner .char:not(.space)').forEach(el => {
+    const cueDiv = el.closest('.cue-block');
+    allUnits.push({ el, cueIdx: parseInt(cueDiv.dataset.cue) });
+  });
+  // Wire up click handlers
+  allUnits.forEach((u, ui) => {
+    u.el.removeEventListener('click', u._handler);
+    u._handler = () => clickJumpTo(ui);
+    u.el.addEventListener('click', u._handler);
+  });
+  // Mirror highlights from cue DOM into teleprompter DOM
+  syncTpHighlights();
+}
+
+// ── Sync teleprompter highlight state to match cue DOM ──
+function syncTpHighlights() {
+  // Get all highlighted text from cue DOM, apply same to tp DOM by position
+  const cueChars = Array.from(document.querySelectorAll('#cue-block-inner .char:not(.space)'));
+  const tpChars  = Array.from(document.querySelectorAll('#teleprompter-inner .char:not(.space)'));
+  const len = Math.min(cueChars.length, tpChars.length);
+  for (let i = 0; i < len; i++) {
+    if (cueChars[i].classList.contains('highlighted')) tpChars[i].classList.add('highlighted');
+    else tpChars[i].classList.remove('highlighted');
+  }
+}
+
+// ── Show cue (cue mode) ──
 function showCue(idx) {
-  document.querySelectorAll('.cue-block').forEach((el, i) => el.style.display = i === idx ? 'block' : 'none');
+  document.querySelectorAll('#cue-block-inner .cue-block').forEach((el, i) => {
+    el.classList.toggle('active', i === idx);
+  });
   currentCue = idx;
+  if (displayModeEl.value === 'teleprompter') scrollTpToCue(idx, false);
   scheduleCanvasDraw();
 }
 
-// ─────────────────────────────────────────────
-// CLICK TO JUMP
-// ─────────────────────────────────────────────
+// ── Teleprompter scroll — smoothly keep active cue centered ──
+function scrollTpToCue(cIdx, instant) {
+  const stageH = stage.offsetHeight;
+  // Find first tp-line for this cue
+  const firstLine = tpInner.querySelector(`.tp-line[data-cue="${cIdx}"]`);
+  if (!firstLine) return;
+  const lineTop = firstLine.offsetTop;
+  const lineH = firstLine.offsetHeight;
+  // Center it in stage
+  tpTargetY = -(lineTop - stageH / 2 + lineH / 2);
+  if (instant) {
+    tpCurrentY = tpTargetY;
+    tpInner.style.top = tpCurrentY + 'px';
+  } else {
+    animateTp();
+  }
+}
+
+function animateTp() {
+  if (tpAnimId) cancelAnimationFrame(tpAnimId);
+  function step() {
+    const diff = tpTargetY - tpCurrentY;
+    if (Math.abs(diff) < 0.5) { tpCurrentY = tpTargetY; tpInner.style.top = tpCurrentY + 'px'; return; }
+    tpCurrentY += diff * 0.12; // smooth ease
+    tpInner.style.top = tpCurrentY + 'px';
+    tpAnimId = requestAnimationFrame(step);
+  }
+  step();
+}
+
+// ── Highlight a unit — applies to both cue and tp DOM ──
+function highlightUnit(idx) {
+  if (idx >= allUnits.length) return;
+  const cueChar = allUnits[idx].el;
+  cueChar.classList.add('highlighted');
+  // mirror to teleprompter
+  const tpChars = Array.from(document.querySelectorAll('#teleprompter-inner .char:not(.space)'));
+  if (tpChars[idx]) tpChars[idx].classList.add('highlighted');
+  scheduleCanvasDraw();
+}
+
+function clearAllHighlights() {
+  document.querySelectorAll('.char').forEach(c => c.classList.remove('highlighted'));
+  scheduleCanvasDraw();
+}
+
+// ── CLICK TO JUMP ──
 function clickJumpTo(idx) {
   clearTimeout(playTimer);
-  document.querySelectorAll('.char').forEach(c => c.classList.remove('highlighted'));
-  for (let i = 0; i < idx; i++) allUnits[i].el.classList.add('highlighted');
+  clearAllHighlights();
+  for (let i = 0; i < idx; i++) highlightUnit(i);
   unitIndex = idx;
   showCue(allUnits[idx].cueIdx);
   updateNav(); updateProgress();
-  if (playing) { tick(); }
-  else { playing = true; updatePlayBtn(); tick(); }
+  playing = true; updatePlayBtn(); tick();
 }
 
-// ─────────────────────────────────────────────
-// RESET
-// ─────────────────────────────────────────────
+// ── RESET ──
 function resetState() {
   playing = false; clearTimeout(playTimer); unitIndex = 0;
-  document.querySelectorAll('.char').forEach(c => c.classList.remove('highlighted'));
+  clearAllHighlights();
   if (cues.length) showCue(0);
   updatePlayBtn(); updateProgress();
 }
@@ -292,27 +458,20 @@ function getSpeed() {
   return modeEl.value === 'char' ? parseInt(charSpeedEl.value) : parseInt(wordSpeedEl.value);
 }
 
-// ─────────────────────────────────────────────
-// PLAY / PAUSE
-// ─────────────────────────────────────────────
+// ── PLAY/PAUSE ──
 playpauseBtn.addEventListener('click', togglePlay);
-
 function togglePlay() {
   if (!cues.length) return;
   if (playing) { playing = false; clearTimeout(playTimer); }
   else { playing = true; tick(); }
   updatePlayBtn();
 }
-
 function updatePlayBtn() {
   playpauseBtn.textContent = playing ? '⏸ Pause' : '▶ Play';
   playpauseBtn.classList.toggle('is-playing', playing);
 }
 
-// ─────────────────────────────────────────────
-// TICK — uses setTimeout so it NEVER drifts due to canvas work
-// The canvas drawing happens on rAF, completely separate
-// ─────────────────────────────────────────────
+// ── TICK ──
 function tick() {
   if (!playing) return;
   if (unitIndex >= allUnits.length) { playing = false; updatePlayBtn(); updateProgress(); return; }
@@ -320,27 +479,24 @@ function tick() {
   const entry = allUnits[unitIndex];
 
   if (entry.cueIdx !== currentCue) {
+    // cue boundary — brief pause then switch
     playing = false;
     playTimer = setTimeout(() => {
-      document.querySelectorAll('.char').forEach(c => c.classList.remove('highlighted'));
+      clearAllHighlights();
       showCue(entry.cueIdx); updateNav();
       playing = true; updatePlayBtn(); tick();
     }, parseInt(cuePauseEl.value));
     return;
   }
 
-  entry.el.classList.add('highlighted');
-  scheduleCanvasDraw(); // tell canvas to redraw — non-blocking
+  highlightUnit(unitIndex);
   unitIndex++; updateProgress();
-  playTimer = setTimeout(tick, getSpeed()); // schedule next highlight independently
+  playTimer = setTimeout(tick, getSpeed());
 }
 
-// ─────────────────────────────────────────────
-// PREV / NEXT
-// ─────────────────────────────────────────────
+// ── RESET / PREV / NEXT ──
 resetBtn.addEventListener('click', () => {
-  clearTimeout(playTimer);
-  document.querySelectorAll('.char').forEach(c => c.classList.remove('highlighted'));
+  clearTimeout(playTimer); clearAllHighlights();
   unitIndex = 0; playing = false;
   if (cues.length) showCue(0);
   updatePlayBtn(); updateNav(); updateProgress();
@@ -349,16 +505,13 @@ prevBtn.addEventListener('click', () => jumpToCue(Math.max(0, currentCue - 1)));
 nextBtn.addEventListener('click', () => jumpToCue(Math.min(cues.length - 1, currentCue + 1)));
 
 function jumpToCue(idx) {
-  playing = false; clearTimeout(playTimer);
-  document.querySelectorAll('.char').forEach(c => c.classList.remove('highlighted'));
+  playing = false; clearTimeout(playTimer); clearAllHighlights();
   unitIndex = allUnits.findIndex(u => u.cueIdx === idx);
   if (unitIndex < 0) unitIndex = 0;
   showCue(idx); updatePlayBtn(); updateNav(); updateProgress();
 }
 
-// ─────────────────────────────────────────────
-// SCROLL — only changes visible cue, never stops playback
-// ─────────────────────────────────────────────
+// ── SCROLL — only visual, never stops playback ──
 let scrollAccum = 0;
 stage.addEventListener('wheel', e => {
   e.preventDefault(); scrollAccum += e.deltaY;
@@ -371,9 +524,7 @@ stage.addEventListener('wheel', e => {
   }
 }, { passive: false });
 
-// ─────────────────────────────────────────────
-// SPACEBAR
-// ─────────────────────────────────────────────
+// ── SPACEBAR ──
 document.addEventListener('keydown', e => {
   if (e.code === 'Space' && document.activeElement.tagName !== 'TEXTAREA') {
     e.preventDefault(); togglePlay();
@@ -381,12 +532,9 @@ document.addEventListener('keydown', e => {
 });
 
 // ─────────────────────────────────────────────
-// CANVAS RENDERER
-// Draws the current cue state onto recCanvas completely independently
-// of the highlight timer — uses requestAnimationFrame, never blocks tick()
+// CANVAS RECORDER — draws independently, never blocks tick
 // ─────────────────────────────────────────────
 let canvasDrawPending = false;
-
 function scheduleCanvasDraw() {
   if (!isRecording || canvasDrawPending) return;
   canvasDrawPending = true;
@@ -396,106 +544,80 @@ function scheduleCanvasDraw() {
 function drawToCanvas() {
   canvasDrawPending = false;
   if (!isRecording) return;
-
   const ctx = recCanvas.getContext('2d');
-  const W = recCanvas.width;
-  const H = recCanvas.height;
-
-  // Green background
+  const W = recCanvas.width, H = recCanvas.height;
   ctx.fillStyle = '#00FF00';
   ctx.fillRect(0, 0, W, H);
-
   if (!cues.length || !allUnits.length) return;
 
-  // Compute font size in px — fontSizeEl is in vw, convert relative to canvas width
-  const vw = W; // canvas width = our reference vw
+  const vw = W;
   const fontPx = Math.round(parseFloat(fontSizeEl.value) / 100 * vw);
-  const fontFamily = '"Arial Black", Arial, sans-serif';
-
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = `900 ${fontPx}px ${fontFamily}`;
+  ctx.font = `900 ${fontPx}px "Arial Black", Arial, sans-serif`;
 
-  // Get all units for current cue
-  const cueUnits = allUnits.filter(u => u.cueIdx === currentCue);
-  if (!cueUnits.length) return;
+  const activeCueDivs = document.querySelectorAll('#cue-block-inner .cue-block.active');
+  if (!activeCueDivs.length) return;
+  const activeDiv = activeCueDivs[0];
+  const subLines = Array.from(activeDiv.querySelectorAll('.sub-line, br')).filter(el => el.tagName !== 'BR');
+  const lineCount = activeDiv.querySelectorAll('.sub-line').length;
+  const lineH = fontPx * 1.28;
+  const totalH = lineH * lineCount;
+  let lineIdx = 0;
 
-  // Group by line using the DOM structure to get line breaks
-  // We'll measure and lay out line by line
-  const cueDiv = document.querySelectorAll('.cue-block')[currentCue];
-  if (!cueDiv) return;
-
-  const subLines = Array.from(cueDiv.querySelectorAll('.sub-line'));
-  const lineCount = subLines.length;
-  const lineHeight = fontPx * 1.3;
-  const totalH = lineHeight * lineCount;
-  const startY = H / 2 - totalH / 2 + lineHeight / 2;
-
-  subLines.forEach((subLine, li) => {
-    const y = startY + li * lineHeight;
+  activeDiv.querySelectorAll('.sub-line').forEach(subLine => {
+    const y = H / 2 - totalH / 2 + lineH * lineIdx + lineH / 2;
     const chars = Array.from(subLine.querySelectorAll('.char'));
-    if (!chars.length) return;
-
-    // Measure full line width
     const fullText = chars.map(c => c.textContent).join('');
-    const totalWidth = ctx.measureText(fullText).width;
-    let x = W / 2 - totalWidth / 2;
+    const totalW = ctx.measureText(fullText).width;
+    // clamp to canvas width
+    let scale = 1;
+    if (totalW > W * 0.96) scale = (W * 0.96) / totalW;
+    let x = W / 2 - (totalW * scale) / 2;
+    ctx.save();
+    if (scale < 1) { ctx.scale(scale, scale); x = x / scale; }
 
     chars.forEach(charEl => {
       const ch = charEl.textContent;
-      const isHighlighted = charEl.classList.contains('highlighted');
-      const chWidth = ctx.measureText(ch).width;
-      const cx = x + chWidth / 2;
-
-      // Shadow (outline)
-      ctx.shadowColor = 'transparent';
-      ctx.fillStyle = '#000000';
-      const offsets = [[-2,-2],[2,-2],[-2,2],[2,2],[0,3]];
-      offsets.forEach(([ox,oy]) => {
-        ctx.fillText(ch, cx + ox, y + oy);
+      const isHL = charEl.classList.contains('highlighted');
+      const cw = ctx.measureText(ch).width;
+      const cx = x + cw / 2;
+      // outline
+      [[-2,-2],[2,-2],[-2,2],[2,2],[0,3]].forEach(([ox,oy]) => {
+        ctx.fillStyle = '#000'; ctx.fillText(ch, cx+ox, y/scale+oy);
       });
-
-      // Main color
-      ctx.fillStyle = isHighlighted ? '#FFE600' : '#FFFFFF';
-      ctx.fillText(ch, cx, y);
-
-      x += chWidth;
+      ctx.fillStyle = isHL ? '#FFE600' : '#FFFFFF';
+      ctx.fillText(ch, cx, y / scale);
+      x += cw;
     });
+    ctx.restore();
+    lineIdx++;
   });
 }
 
-// rAF loop while recording to keep canvas live at ~25fps
 function startCanvasLoop() {
   function loop() {
     if (!isRecording) return;
     drawToCanvas();
-    recRafId = setTimeout(loop, 1000 / 25); // 25fps using setTimeout to not hog rAF
+    recRafId = setTimeout(loop, 1000 / 25);
   }
   loop();
 }
 
-// ─────────────────────────────────────────────
-// RECORD
-// ─────────────────────────────────────────────
+// ── RECORD ──
 recordBtn.addEventListener('click', async () => {
   if (isRecording) { stopRecording(); return; }
 
-  // Canvas size: 480p maintaining 16:9
   const stageRect = stage.getBoundingClientRect();
-  const aspect = stageRect.width / stageRect.height;
-  const capH = 480;
-  const capW = Math.round(capH * aspect);
-  recCanvas.width  = capW;
-  recCanvas.height = capH;
-
-  // Draw first frame
+  const capH = 480, capW = Math.round(capH * stageRect.width / stageRect.height);
+  recCanvas.width = capW; recCanvas.height = capH;
   drawToCanvas();
 
   let stream;
   try { stream = recCanvas.captureStream(25); }
   catch(e) { alert('Recording not supported. Use Chrome or Edge.'); return; }
 
-  const mimeType = ['video/mp4;codecs=avc1','video/mp4','video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm']
+  const mimeType = ['video/mp4;codecs=avc1','video/mp4','video/webm;codecs=vp9','video/webm']
     .find(t => MediaRecorder.isTypeSupported(t)) || 'video/webm';
   const ext = mimeType.startsWith('video/mp4') ? 'mp4' : 'webm';
 
@@ -505,53 +627,51 @@ recordBtn.addEventListener('click', async () => {
 
   mediaRecorder.ondataavailable = e => { if (e.data?.size > 0) recordedChunks.push(e.data); };
   mediaRecorder.onstop = () => {
-    clearInterval(recTimerInterval);
-    clearTimeout(recRafId);
+    clearInterval(recTimerInterval); clearTimeout(recRafId);
     isRecording = false;
-    recordBtn.textContent = '⏺ Record';
-    recordBtn.classList.remove('recording');
+    recordBtn.textContent = '⏺ Record'; recordBtn.classList.remove('recording');
     recTimerEl.classList.remove('active');
-
     const blob = new Blob(recordedChunks, { type: mimeType });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
     a.href = url; a.download = 'green-screen-lyrics.' + ext;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 8000);
   };
 
-  isRecording = true;
-  mediaRecorder.start(200);
-  startCanvasLoop(); // start the independent canvas draw loop
-
+  isRecording = true; mediaRecorder.start(200); startCanvasLoop();
   recStartTime = Date.now();
   recTimerInterval = setInterval(() => {
-    const s = Math.floor((Date.now() - recStartTime) / 1000);
-    recTimerEl.textContent = String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
+    const s = Math.floor((Date.now()-recStartTime)/1000);
+    recTimerEl.textContent = String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
   }, 1000);
-
-  recordBtn.textContent = '⏹ Stop & Save';
-  recordBtn.classList.add('recording');
-  recTimerEl.classList.add('active');
-  recTimerEl.textContent = '00:00';
+  recordBtn.textContent = '⏹ Stop & Save'; recordBtn.classList.add('recording');
+  recTimerEl.classList.add('active'); recTimerEl.textContent = '00:00';
 });
 
 function stopRecording() {
-  if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+  if (mediaRecorder?.state !== 'inactive') mediaRecorder.stop();
 }
 
-// ─────────────────────────────────────────────
-// HELPERS
-// ─────────────────────────────────────────────
 function updateNav() {
-  cueInfo.textContent = cues.length ? 'Cue ' + (currentCue+1) + ' / ' + cues.length : 'Load lyrics to begin';
+  cueInfoEl.textContent = cues.length ? 'Cue '+(currentCue+1)+' / '+cues.length : 'Load lyrics to begin';
 }
 function updateProgress() {
-  progressBar.style.width = (allUnits.length ? unitIndex / allUnits.length * 100 : 0) + '%';
+  progressBar.style.width = (allUnits.length ? unitIndex/allUnits.length*100 : 0)+'%';
 }
 
 // Init
 setStageHeight();
+
+// After buildDOM, rebuild unit refs (need DOM to be ready)
+const _origLoad = loadBtn.onclick;
+document.addEventListener('DOMContentLoaded', setStageHeight);
+
+// Patch load to also rebuild unit refs after DOM build
+const origLoadHandler = loadBtn.addEventListener;
+loadBtn.addEventListener('click', () => {
+  setTimeout(rebuildUnitRefs, 50);
+}, true);
 </script>
 </body>
 </html>
