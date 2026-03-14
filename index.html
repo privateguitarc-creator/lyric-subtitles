@@ -382,8 +382,6 @@ function jumpToCue(idx) {
 
 // ── SCROLL on stage ──
 let scrollAccum = 0;
-// scroll only changes visible cue — never stops highlight
-let scrollAccum = 0;
 stage.addEventListener('wheel', e => {
   e.preventDefault(); scrollAccum += e.deltaY;
   if (Math.abs(scrollAccum) > 60) {
