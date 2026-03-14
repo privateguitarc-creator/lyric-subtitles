@@ -162,8 +162,8 @@ canvas { display:none; }
       <span id="time-label">0.0s / 0.0s</span>
     </div>
     <!-- Per-line speed panel -->
-  <div id="line-speeds-panel" style="background:#0a0a1a;border-top:1px solid #0f3460;padding:6px 14px;max-height:160px;overflow-y:auto;display:none;">
-    <div style="font-size:0.68rem;color:#666;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.4px;">⚡ Highlight Speed per Line — drag to set how fast yellow moves on each line</div>
+  <div id="line-speeds-panel" style="background:#080818;border-top:1px solid #0f3460;padding:4px 8px;max-height:150px;overflow-y:auto;display:none;">
+    <div style="font-size:0.62rem;color:#444;margin-bottom:3px;text-transform:uppercase;letter-spacing:0.3px;">⚡ Speed per line &nbsp;|&nbsp; 🐌 Left = Slow &nbsp; Right = Fast ⚡ &nbsp;|&nbsp; Click line to jump preview</div>
     <div id="line-speeds-list"></div>
   </div>
 </div>
@@ -459,65 +459,116 @@ function buildLineSpeeds() {
 
     cue.lines.forEach((line, li) => {
       const spd = cue.lineSpeeds[li] !== null ? cue.lineSpeeds[li] : defaultSpd;
-      const row = document.createElement('div');
-      row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid #111;';
 
-      // cue+line label
+      // slider is INVERTED: right=fast(low ms), left=slow(high ms)
+      // so we store actual ms but display inverted slider
+      // inverted value = max + min - actual = 1200 + 40 - spd = 1240 - spd
+      const invertedVal = 1240 - spd;
+
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:3px 6px;border-bottom:1px solid #0f0f22;cursor:pointer;transition:background 0.12s;';
+      row.addEventListener('mouseenter', () => row.style.background='#0f0f28');
+      row.addEventListener('mouseleave', () => row.style.background='');
+
+      // click lyric text → jump preview to this cue
+      row.addEventListener('click', (e) => {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
+        jumpPreviewToCue(ci);
+      });
+
+      // C1L1 label
       const lbl = document.createElement('span');
-      lbl.style.cssText = 'font-size:0.68rem;color:#555;min-width:52px;flex-shrink:0;';
-      lbl.textContent = 'C'+(ci+1)+' L'+(li+1);
+      lbl.style.cssText = 'font-size:0.66rem;color:#444;min-width:40px;flex-shrink:0;font-weight:700;';
+      lbl.textContent = 'C'+(ci+1)+'L'+(li+1);
       row.appendChild(lbl);
 
-      // lyric text
+      // lyric text — clickable
       const txt = document.createElement('span');
-      txt.style.cssText = 'font-size:0.74rem;color:#aaa;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+      txt.style.cssText = 'font-size:0.76rem;color:#ccc;width:220px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;cursor:pointer;';
+      txt.title = 'Click to jump preview here';
       txt.textContent = line;
       row.appendChild(txt);
 
-      // speed label (fast/slow)
-      const speedLbl = document.createElement('span');
-      speedLbl.style.cssText = 'font-size:0.7rem;color:#2ecc71;font-weight:700;min-width:78px;text-align:right;flex-shrink:0;';
-      speedLbl.textContent = getSpeedLabel(spd);
-      row.appendChild(speedLbl);
+      // SLOW label
+      const slowLbl = document.createElement('span');
+      slowLbl.style.cssText = 'font-size:0.62rem;color:#555;flex-shrink:0;';
+      slowLbl.textContent = '🐌';
+      row.appendChild(slowLbl);
 
-      // slider
+      // inverted slider: left=slow(1200ms), right=fast(40ms)
       const slider = document.createElement('input');
       slider.type = 'range'; slider.min = 40; slider.max = 1200;
-      slider.value = spd; slider.step = 10;
-      slider.style.cssText = 'width:130px;flex-shrink:0;accent-color:#e94560;';
+      slider.value = invertedVal; slider.step = 10;
+      slider.style.cssText = 'width:120px;flex-shrink:0;accent-color:#e94560;';
 
-      // ms value
+      // FAST label
+      const fastLbl = document.createElement('span');
+      fastLbl.style.cssText = 'font-size:0.62rem;color:#555;flex-shrink:0;';
+      fastLbl.textContent = '⚡';
+      row.appendChild(slider);
+      row.appendChild(fastLbl);
+
+      // ms value display
       const msLbl = document.createElement('span');
-      msLbl.style.cssText = 'font-size:0.74rem;color:#e94560;font-weight:700;min-width:42px;text-align:right;flex-shrink:0;';
+      msLbl.style.cssText = 'font-size:0.72rem;color:#e94560;font-weight:700;min-width:40px;text-align:right;flex-shrink:0;';
       msLbl.textContent = spd+'ms';
+      row.appendChild(msLbl);
+
+      // speed emoji label
+      const speedLbl = document.createElement('span');
+      speedLbl.style.cssText = 'font-size:0.7rem;color:#2ecc71;font-weight:700;min-width:72px;flex-shrink:0;';
+      speedLbl.textContent = getSpeedLabel(spd);
+      row.appendChild(speedLbl);
 
       // reset btn
       const resetBtn = document.createElement('button');
       resetBtn.className = 'sec';
       resetBtn.textContent = '↺';
-      resetBtn.title = 'Reset to global default';
-      resetBtn.style.cssText = 'font-size:0.62rem;padding:2px 6px;flex-shrink:0;';
+      resetBtn.title = 'Reset to default';
+      resetBtn.style.cssText = 'font-size:0.6rem;padding:2px 5px;flex-shrink:0;';
+      row.appendChild(resetBtn);
 
       slider.addEventListener('input', () => {
-        const v = parseInt(slider.value);
-        cue.lineSpeeds[li] = v;
-        msLbl.textContent = v+'ms';
-        speedLbl.textContent = getSpeedLabel(v);
+        const invV = parseInt(slider.value);
+        const actualMs = 1240 - invV; // convert back
+        cue.lineSpeeds[li] = actualMs;
+        msLbl.textContent = actualMs+'ms';
+        speedLbl.textContent = getSpeedLabel(actualMs);
       });
+
       resetBtn.addEventListener('click', () => {
         cue.lineSpeeds[li] = null;
         const def = parseInt(document.getElementById('r-wsp').value)||350;
-        slider.value = def;
+        slider.value = 1240 - def;
         msLbl.textContent = def+'ms';
         speedLbl.textContent = getSpeedLabel(def);
       });
 
-      row.appendChild(slider);
-      row.appendChild(msLbl);
-      row.appendChild(resetBtn);
       list.appendChild(row);
     });
   });
+}
+
+function jumpPreviewToCue(ci) {
+  if (!cues[ci] || cues[ci].startTime === null) return;
+  // seek audio to cue start time
+  if (audioEl) {
+    audioEl.currentTime = cues[ci].startTime;
+    audioStartedAt = performance.now();
+    audioStartOffset = cues[ci].startTime;
+  }
+  // reset highlight state
+  clearHL(); hideCue();
+  activeCueIdx = -1;
+  unitIdx = stageUnits.findIndex(u => u.cueIdx === ci);
+  if (unitIdx < 0) unitIdx = 0;
+  // if not already playing, start
+  if (!isPlaying) {
+    if (audioEl) audioEl.play().catch(()=>{});
+    isPlaying = true;
+    hlNextAt = performance.now();
+    rafId = requestAnimationFrame(rafLoop);
+  }
 }
 
 function getSpeedLabel(ms) {
