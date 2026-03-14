@@ -6,86 +6,86 @@
 <title>Lyric Sync Tool</title>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
-body { font-family:'Segoe UI',sans-serif; background:#0d0d1a; color:#eee; overflow-x:hidden; }
+body { font-family:'Segoe UI',sans-serif; background:#0d0d1a; color:#eee; overflow-x:hidden; user-select:none; }
 
-/* ── TABS ── */
-#tabs { display:flex; background:#16213e; border-bottom:2px solid #0f3460; }
-.tab { padding:10px 20px; font-size:0.85rem; font-weight:700; cursor:pointer; color:#888; border-bottom:3px solid transparent; transition:all 0.2s; text-transform:uppercase; letter-spacing:0.5px; }
+#tabs { display:flex; background:#16213e; border-bottom:2px solid #0f3460; flex-shrink:0; }
+.tab { padding:9px 18px; font-size:0.82rem; font-weight:700; cursor:pointer; color:#666; border-bottom:3px solid transparent; transition:all 0.15s; text-transform:uppercase; letter-spacing:0.5px; }
 .tab.active { color:#e94560; border-bottom-color:#e94560; }
 
-/* ── PANELS ── */
-.panel { display:none; padding:14px 16px; background:#16213e; }
+.panel { display:none; padding:12px 16px; background:#16213e; flex-shrink:0; }
 .panel.active { display:block; }
 
-label { font-size:0.68rem; color:#aaa; display:block; margin-bottom:4px; text-transform:uppercase; letter-spacing:0.4px; }
-textarea { width:100%; height:90px; background:#0f3460; border:1px solid #e94560; border-radius:5px; color:#fff; padding:8px 10px; font-size:0.85rem; resize:vertical; outline:none; }
+label { font-size:0.66rem; color:#aaa; display:block; margin-bottom:3px; text-transform:uppercase; letter-spacing:0.4px; }
+textarea { width:100%; height:80px; background:#0f3460; border:1px solid #e94560; border-radius:5px; color:#fff; padding:7px 10px; font-size:0.84rem; resize:vertical; outline:none; }
 textarea::placeholder { color:#555; }
-input[type=text], input[type=number] { background:#0f3460; border:1px solid #444; border-radius:4px; color:#fff; padding:5px 8px; font-size:0.85rem; outline:none; }
-input[type=range] { accent-color:#e94560; }
-select { background:#0f3460; color:#fff; border:1px solid #444; border-radius:4px; padding:5px 8px; font-size:0.82rem; outline:none; cursor:pointer; }
+input[type=number] { background:#0f3460; border:1px solid #444; border-radius:4px; color:#fff; padding:4px 7px; font-size:0.82rem; outline:none; width:70px; }
+input[type=range] { accent-color:#e94560; cursor:pointer; }
+select { background:#0f3460; color:#fff; border:1px solid #444; border-radius:4px; padding:4px 7px; font-size:0.8rem; outline:none; cursor:pointer; }
 
 .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:8px; }
-.val-label { font-size:0.76rem; color:#e94560; font-weight:700; min-width:50px; }
+.sl { display:flex; align-items:center; gap:5px; }
+.sl label { margin:0; white-space:nowrap; }
+.vl { font-size:0.74rem; color:#e94560; font-weight:700; min-width:42px; }
 
-button { background:#e94560; color:#fff; border:none; border-radius:5px; padding:7px 14px; font-size:0.82rem; font-weight:700; cursor:pointer; transition:background 0.15s; user-select:none; white-space:nowrap; }
+button { background:#e94560; color:#fff; border:none; border-radius:5px; padding:6px 13px; font-size:0.8rem; font-weight:700; cursor:pointer; transition:background 0.15s; white-space:nowrap; }
 button:hover { background:#c73652; }
-button:disabled { opacity:0.35; cursor:not-allowed; }
+button:disabled { opacity:0.38; cursor:not-allowed; }
 button.sec { background:#0f3460; border:1px solid #e94560; }
 button.sec:hover:not(:disabled) { background:#1a4a80; }
-button.green { background:#1a7a4a; border:1px solid #2ecc71; }
-button.green:hover:not(:disabled) { background:#145e38; }
-button.green.recording { background:#c0392b; border-color:#e74c3c; animation:pulse 1s infinite; }
-@keyframes pulse { 0%,100%{box-shadow:0 0 6px 2px rgba(231,76,60,0.4)} 50%{box-shadow:0 0 14px 6px rgba(231,76,60,0.8)} }
+button.grn { background:#1a7a4a; border:1px solid #2ecc71; }
+button.grn:hover:not(:disabled) { background:#145e38; }
+button.grn.rec { background:#c0392b; border-color:#e74c3c; animation:pulse 1s infinite; }
+@keyframes pulse { 0%,100%{box-shadow:0 0 5px 2px rgba(231,76,60,0.4)} 50%{box-shadow:0 0 12px 5px rgba(231,76,60,0.8)} }
 
-/* ── STEP 1: SETUP ── */
-#audio-drop { border:2px dashed #0f3460; border-radius:8px; padding:18px; text-align:center; color:#555; font-size:0.85rem; cursor:pointer; margin-bottom:10px; transition:border-color 0.2s; }
-#audio-drop:hover, #audio-drop.drag { border-color:#e94560; color:#aaa; }
-#audio-drop.has-file { border-color:#2ecc71; color:#2ecc71; }
-#audio-player { width:100%; margin-top:8px; display:none; }
-audio { width:100%; border-radius:6px; }
+/* SETUP */
+#audio-drop { border:2px dashed #1a3a6a; border-radius:7px; padding:14px; text-align:center; color:#555; font-size:0.83rem; cursor:pointer; margin-bottom:10px; transition:border-color 0.2s; }
+#audio-drop:hover { border-color:#e94560; color:#aaa; }
+#audio-drop.has { border-color:#2ecc71; color:#2ecc71; }
+#audio-player { display:none; margin-top:6px; }
+audio { width:100%; border-radius:5px; }
 
-/* ── STEP 2: TAP SYNC ── */
-#tap-area { background:#0a0a1a; border-radius:8px; padding:14px; margin-top:10px; }
-#tap-cue-display { font-size:1.1rem; font-weight:700; color:#fff; text-align:center; padding:14px 8px; min-height:60px; display:flex; align-items:center; justify-content:center; background:#0f3460; border-radius:6px; margin-bottom:10px; letter-spacing:1px; }
-#tap-next-cue { font-size:0.78rem; color:#888; text-align:center; margin-bottom:8px; min-height:18px; }
-.tap-hint { font-size:0.72rem; color:#555; text-align:center; margin-top:6px; }
-#tap-progress { font-size:0.78rem; color:#e94560; font-weight:700; margin-left:8px; }
+/* TAP SYNC */
+#tap-cue { font-size:1rem; font-weight:700; color:#fff; text-align:center; padding:12px 8px; min-height:54px; display:flex; align-items:center; justify-content:center; background:#0f3460; border-radius:6px; margin-bottom:8px; letter-spacing:1px; line-height:1.3; }
+#tap-next { font-size:0.74rem; color:#666; text-align:center; margin-bottom:8px; min-height:16px; }
+.tap-hint { font-size:0.68rem; color:#444; text-align:center; margin-top:5px; }
 
-/* timing list */
-#timing-list { margin-top:12px; max-height:200px; overflow-y:auto; }
-#timing-list::-webkit-scrollbar { width:4px; } 
+#timing-list { margin-top:10px; max-height:180px; overflow-y:auto; }
+#timing-list::-webkit-scrollbar { width:3px; }
 #timing-list::-webkit-scrollbar-thumb { background:#333; border-radius:2px; }
-.timing-row { display:flex; gap:8px; align-items:center; padding:4px 0; border-bottom:1px solid #1a1a3a; font-size:0.8rem; }
-.timing-row .t-idx { color:#555; width:28px; flex-shrink:0; }
-.timing-row .t-time { width:70px; flex-shrink:0; }
-.timing-row .t-time input { width:65px; font-size:0.78rem; }
-.timing-row .t-text { color:#aaa; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.timing-row .t-del { color:#e94560; cursor:pointer; font-size:0.9rem; padding:0 4px; }
+.tr { display:flex; gap:7px; align-items:center; padding:3px 0; border-bottom:1px solid #1a1a3a; font-size:0.78rem; }
+.tr .ti { color:#555; width:24px; flex-shrink:0; }
+.tr .tt input { width:62px; font-size:0.76rem; }
+.tr .tx { color:#aaa; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.tr .td { color:#e94560; cursor:pointer; padding:0 4px; font-size:0.88rem; flex-shrink:0; }
 
-/* ── STEP 3: PREVIEW & RECORD ── */
-#preview-controls { display:flex; gap:8px; flex-wrap:wrap; align-items:center; padding:10px 0; border-bottom:1px solid #1a1a3a; margin-bottom:10px; }
-.slider-row { display:flex; align-items:center; gap:6px; }
+/* PREVIEW & RECORD */
+#ctrl-bar { background:#16213e; padding:8px 14px; display:flex; flex-direction:column; gap:6px; flex-shrink:0; border-bottom:2px solid #0f3460; }
+#ctrl-row1 { display:flex; gap:7px; align-items:center; flex-wrap:wrap; }
+#ctrl-row2 { display:flex; gap:14px; align-items:center; flex-wrap:wrap; }
 
-/* progress bar */
-#progress-bar-wrap { background:#000; height:3px; }
-#progress-bar { height:100%; background:#e94560; width:0%; transition:width 0.1s linear; }
+/* SEEK BAR */
+#seek-wrap { display:flex; align-items:center; gap:8px; }
+#seek-bar { flex:1; height:5px; -webkit-appearance:none; appearance:none; background:linear-gradient(to right,#e94560 0%,#e94560 0%,#1a3a6a 0%,#1a3a6a 100%); border-radius:3px; cursor:pointer; outline:none; }
+#seek-bar::-webkit-slider-thumb { -webkit-appearance:none; width:14px; height:14px; background:#e94560; border-radius:50%; cursor:pointer; box-shadow:0 0 4px rgba(233,69,96,0.6); }
+#time-label { font-size:0.75rem; color:#888; min-width:80px; text-align:right; }
+#rec-timer { font-size:0.76rem; color:#e74c3c; font-weight:700; display:none; margin-left:2px; }
+#rec-timer.on { display:inline; }
 
-/* ── STAGE ── */
-#stage { background:#00FF00; width:100vw; display:flex; align-items:center; justify-content:center; overflow:hidden; position:relative; }
-#stage-inner { text-align:center; width:96%; padding:0; line-height:1.25; }
-.stage-line { display:block; white-space:nowrap; }
-.char { display:inline; font-family:'Arial Black',Arial,sans-serif; font-weight:900; text-transform:uppercase; color:#fff; text-shadow:2px 2px 0 #000,-2px 2px 0 #000,2px -2px 0 #000,-2px -2px 0 #000,0 3px 8px rgba(0,0,0,0.9); transition:color 0.05s; }
-.char.hl { color:#FFE600; }
-.char.sp { display:inline; }
+/* STAGE */
+#stage-wrap { flex:1; overflow:hidden; position:relative; }
+#stage { background:#00FF00; width:100%; height:100%; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+#stage-inner { text-align:center; width:96%; line-height:1.25; }
+.cue-div { display:none; }
+.cue-div.on { display:block; }
+.sl-line { display:block; white-space:nowrap; }
+.ch { display:inline; font-family:'Arial Black',Arial,sans-serif; font-weight:900; text-transform:uppercase; color:#fff; text-shadow:2px 2px 0 #000,-2px 2px 0 #000,2px -2px 0 #000,-2px -2px 0 #000,0 3px 8px rgba(0,0,0,0.9); transition:color 0.04s; }
+.ch.hl { color:#FFE600; }
+.ch.sp { display:inline; }
 
-#time-display { position:absolute; top:8px; right:12px; font-size:0.72rem; color:rgba(0,80,0,0.5); font-weight:700; pointer-events:none; }
-#rec-timer { font-size:0.78rem; color:#e74c3c; font-weight:700; display:none; }
-#rec-timer.active { display:inline; }
-
-canvas#rec-canvas { display:none; }
+canvas { display:none; }
 </style>
 </head>
-<body>
+<body style="display:flex;flex-direction:column;height:100vh;overflow:hidden;">
 
 <!-- TABS -->
 <div id="tabs">
@@ -94,696 +94,646 @@ canvas#rec-canvas { display:none; }
   <div class="tab" data-tab="record">③ Preview & Record</div>
 </div>
 
-<!-- ══════════════════════════════════════════ -->
-<!-- TAB 1: SETUP -->
-<!-- ══════════════════════════════════════════ -->
+<!-- ═══════════════ TAB 1: SETUP ═══════════════ -->
 <div class="panel active" id="panel-setup">
-  <label style="margin-bottom:6px;">1. Upload Audio</label>
-  <div id="audio-drop">🎵 Click or drag &amp; drop your audio file here (MP3, M4A, WAV, OGG)</div>
-  <input type="file" id="audio-file-input" accept="audio/*" style="display:none">
-  <div id="audio-player"><audio id="audio-el" controls></audio></div>
+  <label style="margin-bottom:5px;">1. Upload Audio</label>
+  <div id="audio-drop">🎵 Click or drag &amp; drop audio file (MP3, M4A, WAV, OGG)</div>
+  <input type="file" id="audio-file" accept="audio/*" style="display:none">
+  <div id="audio-player"><audio id="audio-setup" controls></audio></div>
 
-  <div style="margin-top:12px;">
-    <label style="margin-bottom:6px;">2. Paste Lyrics — blank line between groups = new cue</label>
+  <div style="margin-top:10px;">
+    <label style="margin-bottom:5px;">2. Paste Lyrics — blank line between groups = new cue</label>
     <textarea id="lyrics-input" placeholder="SATGURU TERE CHARNON KI&#10;SATGURU TERE CHARNON KI&#10;&#10;AGAR DHOOL JO MIL JAAE&#10;&#10;SATGURU TERE CHARNON KI&#10;SATGURU TERE CHARNON KI"></textarea>
   </div>
 
-  <div class="row" style="margin-top:10px;">
-    <select id="hl-mode"><option value="word">Word by Word</option><option value="char">Character by Character</option></select>
-    <label style="margin:0;color:#555;">Highlight:</label>
-    <div class="slider-row">
-      <label style="margin:0;">Word ms</label>
-      <input type="range" id="word-speed" min="80" max="1500" value="350" step="20" style="width:100px;">
-      <span class="val-label" id="word-speed-val">350</span>
-    </div>
-    <div class="slider-row">
-      <label style="margin:0;">Char ms</label>
-      <input type="range" id="char-speed" min="20" max="800" value="100" step="10" style="width:100px;">
-      <span class="val-label" id="char-speed-val">100</span>
-    </div>
-    <div class="slider-row">
-      <label style="margin:0;">Font</label>
-      <input type="range" id="font-size" min="2" max="10" value="5.5" step="0.25" style="width:80px;">
-      <span class="val-label" id="font-size-val">5.5vw</span>
-    </div>
+  <div class="row" style="margin-top:8px;">
+    <div class="sl"><label>Mode</label><select id="s-mode"><option value="word">Word by Word</option><option value="char">Char by Char</option></select></div>
+    <div class="sl"><label>Word ms</label><input type="range" id="s-wsp" min="80" max="1500" value="350" step="20" style="width:90px;"><span class="vl" id="s-wsp-v">350</span></div>
+    <div class="sl"><label>Char ms</label><input type="range" id="s-csp" min="20" max="800" value="100" step="10" style="width:90px;"><span class="vl" id="s-csp-v">100</span></div>
+    <div class="sl"><label>Cue pause</label><input type="range" id="s-cpause" min="0" max="3000" value="300" step="50" style="width:90px;"><span class="vl" id="s-cpause-v">300ms</span></div>
+    <div class="sl"><label>Font</label><input type="range" id="s-font" min="2" max="10" value="5.5" step="0.25" style="width:80px;"><span class="vl" id="s-font-v">5.5vw</span></div>
   </div>
-
-  <div class="row" style="margin-top:10px;">
-    <button id="setup-next-btn">Next → Go to Tap Sync</button>
-    <span id="setup-status" style="font-size:0.78rem;color:#888;"></span>
-  </div>
+  <div class="row"><button id="setup-go">Next → Tap Sync</button><span id="setup-err" style="font-size:0.76rem;color:#e94560;"></span></div>
 </div>
 
-<!-- ══════════════════════════════════════════ -->
-<!-- TAB 2: TAP SYNC -->
-<!-- ══════════════════════════════════════════ -->
+<!-- ═══════════════ TAB 2: TAP SYNC ═══════════════ -->
 <div class="panel" id="panel-sync">
-  <div style="font-size:0.8rem;color:#888;margin-bottom:8px;">
-    Press <strong style="color:#e94560;">ENTER</strong> or tap <strong style="color:#e94560;">TAP CUE</strong> each time a lyric cue starts. Audio plays below.
+  <audio id="audio-sync" controls style="width:100%;border-radius:5px;margin-bottom:8px;"></audio>
+  <div style="font-size:0.76rem;color:#888;margin-bottom:7px;">Press <strong style="color:#e94560;">ENTER</strong> or tap <strong style="color:#e94560;">TAP</strong> when each cue starts. Fine-tune times below.</div>
+  <div id="tap-cue">Load lyrics first</div>
+  <div id="tap-next"></div>
+  <div class="row" style="justify-content:center;gap:8px;">
+    <button id="tap-btn" disabled style="font-size:0.95rem;padding:9px 24px;">⏎ TAP</button>
+    <button id="tap-undo" class="sec" disabled>↩ Undo</button>
+    <button id="tap-reset" class="sec">↺ Reset</button>
+    <span id="tap-prog" style="font-size:0.76rem;color:#e94560;font-weight:700;"></span>
   </div>
-  <audio id="audio-sync" controls style="width:100%;margin-bottom:8px;border-radius:6px;"></audio>
+  <div class="tap-hint">Tip: tap a hair early, then fine-tune in the table below</div>
 
-  <div id="tap-area">
-    <div id="tap-cue-display">Load lyrics first</div>
-    <div id="tap-next-cue"></div>
-    <div class="row" style="justify-content:center;gap:10px;">
-      <button id="tap-btn" disabled style="font-size:1rem;padding:10px 28px;background:#e94560;">⏎ TAP CUE</button>
-      <button id="tap-undo-btn" class="sec" disabled>↩ Undo</button>
-      <button id="tap-reset-btn" class="sec" disabled>Reset Taps</button>
-      <span id="tap-progress"></span>
-    </div>
-    <div class="tap-hint">Tip: tap slightly before the lyric starts. You can fine-tune times below.</div>
-  </div>
-
-  <!-- Manual timing table -->
-  <div style="margin-top:12px;display:flex;justify-content:space-between;align-items:center;">
-    <label style="margin:0;">Manual Timing (seconds) — edit any cue start time directly</label>
-    <button id="add-timing-btn" class="sec" style="font-size:0.75rem;padding:4px 10px;">+ Add Cue</button>
+  <div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;">
+    <label style="margin:0;">Timing table — edit seconds directly</label>
+    <button id="add-cue-btn" class="sec" style="font-size:0.72rem;padding:3px 8px;">+ Add</button>
   </div>
   <div id="timing-list"></div>
-
-  <div class="row" style="margin-top:10px;">
-    <button id="sync-next-btn">Next → Preview &amp; Record</button>
-    <button id="sync-back-btn" class="sec">← Back</button>
+  <div class="row" style="margin-top:8px;">
+    <button id="sync-go">Next → Preview &amp; Record</button>
+    <button id="sync-back" class="sec">← Back</button>
   </div>
 </div>
 
-<!-- ══════════════════════════════════════════ -->
-<!-- TAB 3: PREVIEW & RECORD -->
-<!-- ══════════════════════════════════════════ -->
-<div class="panel" id="panel-record">
-  <div id="preview-controls" style="flex-wrap:wrap;gap:6px 12px;">
-    <!-- Row 1: playback buttons -->
-    <div style="display:flex;gap:6px;align-items:center;width:100%;flex-wrap:wrap;">
-      <button id="preview-play-btn">▶ Preview</button>
-      <button id="preview-stop-btn" class="sec">⏹ Stop</button>
-      <button id="record-btn" class="green">⏺ Record Green Screen</button>
+<!-- ═══════════════ TAB 3: PREVIEW & RECORD ═══════════════ -->
+<div class="panel" id="panel-record" style="padding:0;">
+  <div id="ctrl-bar">
+    <div id="ctrl-row1">
+      <button id="r-play">▶ Preview</button>
+      <button id="r-stop" class="sec">⏹ Stop</button>
+      <button id="r-record" class="grn">⏺ Record</button>
       <span id="rec-timer">00:00</span>
-      <span id="rec-status" style="font-size:0.75rem;color:#888;margin-left:2px;"></span>
+      <div class="sl" style="margin-left:4px;"><label>Mode</label><select id="r-mode"><option value="word">Word</option><option value="char">Char</option></select></div>
+      <div class="sl"><label>Word ms</label><input type="range" id="r-wsp" min="80" max="1500" value="350" step="20" style="width:80px;"><span class="vl" id="r-wsp-v">350</span></div>
+      <div class="sl"><label>Char ms</label><input type="range" id="r-csp" min="20" max="800" value="100" step="10" style="width:80px;"><span class="vl" id="r-csp-v">100</span></div>
+      <div class="sl"><label>Pause</label><input type="range" id="r-cpause" min="0" max="3000" value="300" step="50" style="width:75px;"><span class="vl" id="r-cpause-v">300ms</span></div>
+      <div class="sl"><label>Font</label><input type="range" id="r-font" min="2" max="10" value="5.5" step="0.25" style="width:75px;"><span class="vl" id="r-font-v">5.5vw</span></div>
     </div>
-    <!-- Row 2: all controls -->
-    <div style="display:flex;gap:10px 18px;align-items:center;flex-wrap:wrap;padding:4px 0 2px;">
-      <div class="slider-row">
-        <label style="margin:0;white-space:nowrap;">Mode</label>
-        <select id="hl-mode-preview" style="font-size:0.78rem;padding:3px 6px;">
-          <option value="word">Word</option>
-          <option value="char">Char</option>
-        </select>
-      </div>
-      <div class="slider-row">
-        <label style="margin:0;white-space:nowrap;">Word ms</label>
-        <input type="range" id="word-speed-preview" min="80" max="1500" value="350" step="20" style="width:90px;">
-        <span class="val-label" id="word-speed-preview-val" style="min-width:38px;">350</span>
-      </div>
-      <div class="slider-row">
-        <label style="margin:0;white-space:nowrap;">Char ms</label>
-        <input type="range" id="char-speed-preview" min="20" max="800" value="100" step="10" style="width:90px;">
-        <span class="val-label" id="char-speed-preview-val" style="min-width:38px;">100</span>
-      </div>
-      <div class="slider-row">
-        <label style="margin:0;white-space:nowrap;">Cue pause</label>
-        <input type="range" id="cue-pause-preview" min="0" max="3000" value="300" step="50" style="width:90px;">
-        <span class="val-label" id="cue-pause-preview-val" style="min-width:38px;">300ms</span>
-      </div>
-      <div class="slider-row">
-        <label style="margin:0;white-space:nowrap;">Font</label>
-        <input type="range" id="font-size-preview" min="2" max="10" value="5.5" step="0.25" style="width:90px;">
-        <span class="val-label" id="font-size-preview-val" style="min-width:42px;">5.5vw</span>
-      </div>
+    <!-- SEEK BAR -->
+    <div id="seek-wrap">
+      <span style="font-size:0.7rem;color:#666;">0:00</span>
+      <input type="range" id="seek-bar" min="0" max="100" value="0" step="0.1">
+      <span id="time-label">0.0s / 0.0s</span>
     </div>
   </div>
-  <div id="progress-bar-wrap"><div id="progress-bar"></div></div>
-  <div id="stage">
-    <div id="stage-inner"></div>
-    <div id="time-display">0.0s</div>
-  </div>
+</div>
+
+<!-- Stage lives outside panel so it fills remaining space -->
+<div id="stage-wrap">
+  <div id="stage"><div id="stage-inner"></div></div>
 </div>
 
 <canvas id="rec-canvas"></canvas>
+<audio id="audio-rec"></audio>
 
 <script>
-// ══════════════════════════════════════════════
-// STATE
-// ══════════════════════════════════════════════
+// ══════════════════════════════════════════
+// GLOBAL STATE
+// ══════════════════════════════════════════
 let audioSrc = null;
-let cues = [];        // [{lines:[str], startTime:number|null, endTime:number|null}]
-let tapIdx = 0;       // next cue to tap
-let timings = [];     // parallel array: startTime in seconds for each cue (null = not set)
+let cues = []; // [{lines, startTime, endTime}]
 
-// preview/record state
-let previewRunning = false;
-let previewTimer = null;
-let previewAudio = null;
-let currentDisplayCue = -1; // which cue is visible (-1 = none)
-let unitIdx = 0;
-let playTimer = null;
-let stageUnits = [];  // [{el, cueIdx}]
+// playback
+let audioEl = null;        // the active audio element for preview/record
+let isPlaying = false;
+let rafId = null;          // requestAnimationFrame loop id
+let hlTimer = null;        // setTimeout for highlight ticking
+let activeCueIdx = -1;     // which cue is currently shown (-1 = none/green)
+let unitIdx = 0;           // next unit to highlight
+let stageUnits = [];       // [{el, cueIdx}]
 
 // recording
-let isRecording = false, mediaRecorder = null, recordedChunks = [];
-let recTimerInterval = null, recStartTime = 0, recRafId = null;
+let isRecording = false;
+let mediaRecorder = null;
+let recordedChunks = [];
+let recTimerInterval = null;
+let recCanvasTimer = null;
 
-// ══════════════════════════════════════════════
+// ══════════════════════════════════════════
 // TABS
-// ══════════════════════════════════════════════
-document.querySelectorAll('.tab').forEach(tab => {
-  tab.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-    tab.classList.add('active');
-    document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
-    if (tab.dataset.tab === 'record') buildStage();
-    setStageHeight();
-  });
-});
+// ══════════════════════════════════════════
 function goTab(name) {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
-  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + name));
-  if (name === 'record') {
-    // sync preview controls from setup tab values
-    const syncSlider = (fromId, toId, labelId, suffix) => {
-      const fromEl = document.getElementById(fromId);
-      const toEl   = document.getElementById(toId);
-      if (fromEl && toEl) {
-        toEl.value = fromEl.value;
-        if (labelId) document.getElementById(labelId).textContent = fromEl.value + (suffix||'');
-      }
-    };
-    syncSlider('word-speed', 'word-speed-preview', 'word-speed-preview-val', '');
-    syncSlider('char-speed', 'char-speed-preview', 'char-speed-preview-val', '');
-    syncSlider('font-size',  'font-size-preview',  'font-size-preview-val',  'vw');
-    // sync mode
-    const modeSetup   = document.getElementById('hl-mode');
-    const modePreview = document.getElementById('hl-mode-preview');
-    if (modeSetup && modePreview) modePreview.value = modeSetup.value;
-    buildStage();
-  }
-  setStageHeight();
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-'+name));
+  const sw = document.getElementById('stage-wrap');
+  sw.style.display = name === 'record' ? 'flex' : 'none';
+  sw.style.flex = '1';
 }
+document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+  if (t.dataset.tab === 'record') syncControlsToRecord();
+  goTab(t.dataset.tab);
+}));
 
-// ══════════════════════════════════════════════
-// STAGE HEIGHT
-// ══════════════════════════════════════════════
-const stage = document.getElementById('stage');
-function setStageHeight() {
-  // only matters on record tab
-  const recPanel = document.getElementById('panel-record');
-  const isActive = recPanel.classList.contains('active');
-  if (!isActive) return;
-  const tabsH   = document.getElementById('tabs').offsetHeight;
-  const ctrlH   = document.getElementById('preview-controls').offsetHeight;
-  const pbH      = document.getElementById('progress-bar-wrap').offsetHeight;
-  stage.style.height = (window.innerHeight - tabsH - ctrlH - pbH) + 'px';
-}
-window.addEventListener('resize', setStageHeight);
-
-// ══════════════════════════════════════════════
+// ══════════════════════════════════════════
 // AUDIO UPLOAD
-// ══════════════════════════════════════════════
-const audioDrop      = document.getElementById('audio-drop');
-const audioFileInput = document.getElementById('audio-file-input');
-const audioEl        = document.getElementById('audio-el');
-const audioSync      = document.getElementById('audio-sync');
+// ══════════════════════════════════════════
+const audioDrop = document.getElementById('audio-drop');
+audioDrop.addEventListener('click', () => document.getElementById('audio-file').click());
+audioDrop.addEventListener('dragover', e => { e.preventDefault(); audioDrop.style.borderColor='#e94560'; });
+audioDrop.addEventListener('dragleave', () => audioDrop.style.borderColor='');
+audioDrop.addEventListener('drop', e => { e.preventDefault(); audioDrop.style.borderColor=''; loadAudio(e.dataTransfer.files[0]); });
+document.getElementById('audio-file').addEventListener('change', e => loadAudio(e.target.files[0]));
 
-audioDrop.addEventListener('click', () => audioFileInput.click());
-audioDrop.addEventListener('dragover', e => { e.preventDefault(); audioDrop.classList.add('drag'); });
-audioDrop.addEventListener('dragleave', () => audioDrop.classList.remove('drag'));
-audioDrop.addEventListener('drop', e => { e.preventDefault(); audioDrop.classList.remove('drag'); handleAudioFile(e.dataTransfer.files[0]); });
-audioFileInput.addEventListener('change', e => handleAudioFile(e.target.files[0]));
-
-function handleAudioFile(file) {
+function loadAudio(file) {
   if (!file) return;
+  if (audioSrc) URL.revokeObjectURL(audioSrc);
   audioSrc = URL.createObjectURL(file);
-  audioEl.src = audioSrc;
-  audioSync.src = audioSrc;
+  document.getElementById('audio-setup').src = audioSrc;
+  document.getElementById('audio-sync').src = audioSrc;
+  document.getElementById('audio-rec').src = audioSrc;
   document.getElementById('audio-player').style.display = 'block';
   audioDrop.textContent = '✅ ' + file.name;
-  audioDrop.classList.add('has-file');
+  audioDrop.classList.add('has');
 }
 
-// ══════════════════════════════════════════════
-// SLIDERS
-// ══════════════════════════════════════════════
-document.getElementById('word-speed').addEventListener('input', e => document.getElementById('word-speed-val').textContent = e.target.value);
-document.getElementById('char-speed').addEventListener('input', e => document.getElementById('char-speed-val').textContent = e.target.value);
-document.getElementById('font-size').addEventListener('input', e => document.getElementById('font-size-val').textContent = e.target.value + 'vw');
-document.getElementById('font-size-preview').addEventListener('input', e => {
-  document.getElementById('font-size-preview-val').textContent = e.target.value + 'vw';
-  document.querySelectorAll('.char').forEach(c => c.style.fontSize = e.target.value + 'vw');
-});
-document.getElementById('word-speed-preview').addEventListener('input', e => {
-  document.getElementById('word-speed-preview-val').textContent = e.target.value;
-});
-document.getElementById('char-speed-preview').addEventListener('input', e => {
-  document.getElementById('char-speed-preview-val').textContent = e.target.value;
-});
-document.getElementById('cue-pause-preview').addEventListener('input', e => {
-  document.getElementById('cue-pause-preview-val').textContent = e.target.value + 'ms';
+// ══════════════════════════════════════════
+// SETUP SLIDERS
+// ══════════════════════════════════════════
+const setupSliders = [
+  ['s-wsp','s-wsp-v',''],['s-csp','s-csp-v',''],['s-cpause','s-cpause-v','ms'],['s-font','s-font-v','vw']
+];
+setupSliders.forEach(([id,vid,suf]) => {
+  document.getElementById(id).addEventListener('input', e => {
+    document.getElementById(vid).textContent = e.target.value + suf;
+  });
 });
 
-// ══════════════════════════════════════════════
+// ══════════════════════════════════════════
 // SETUP → NEXT
-// ══════════════════════════════════════════════
-document.getElementById('setup-next-btn').addEventListener('click', () => {
+// ══════════════════════════════════════════
+document.getElementById('setup-go').addEventListener('click', () => {
   const raw = document.getElementById('lyrics-input').value.trim();
-  if (!raw) { document.getElementById('setup-status').textContent = '⚠ Paste lyrics first!'; return; }
+  const err = document.getElementById('setup-err');
+  if (!audioSrc) { err.textContent = '⚠ Upload audio first'; return; }
+  if (!raw) { err.textContent = '⚠ Paste lyrics first'; return; }
+  err.textContent = '';
 
-  // Parse cues by blank lines
   cues = [];
   let cur = [];
   raw.split('\n').forEach(line => {
     const t = line.trim();
-    if (t === '') { if (cur.length) { cues.push({ lines: cur, startTime: null }); cur = []; } }
+    if (!t) { if (cur.length) { cues.push({lines:[...cur], startTime:null, endTime:null}); cur=[]; } }
     else cur.push(t);
   });
-  if (cur.length) cues.push({ lines: cur, startTime: null });
+  if (cur.length) cues.push({lines:[...cur], startTime:null, endTime:null});
 
-  timings = cues.map(() => null);
-  tapIdx = 0;
-
-  if (!audioSrc) { document.getElementById('setup-status').textContent = '⚠ Upload audio first!'; return; }
-
-  document.getElementById('setup-status').textContent = '';
-  initTapUI();
+  initTapSync();
   goTab('sync');
 });
 
-// ══════════════════════════════════════════════
-// TAP SYNC UI
-// ══════════════════════════════════════════════
-const tapBtn      = document.getElementById('tap-btn');
-const tapUndoBtn  = document.getElementById('tap-undo-btn');
-const tapResetBtn = document.getElementById('tap-reset-btn');
-const tapCueDisp  = document.getElementById('tap-cue-display');
-const tapNextDisp = document.getElementById('tap-next-cue');
-const tapProgress = document.getElementById('tap-progress');
+// ══════════════════════════════════════════
+// TAP SYNC
+// ══════════════════════════════════════════
+let tapIdx = 0;
+const tapCueEl  = document.getElementById('tap-cue');
+const tapNextEl = document.getElementById('tap-next');
+const tapProgEl = document.getElementById('tap-prog');
+const tapBtn    = document.getElementById('tap-btn');
+const tapUndo   = document.getElementById('tap-undo');
+const syncAudio = document.getElementById('audio-sync');
 
-function initTapUI() {
-  tapBtn.disabled = false;
-  tapUndoBtn.disabled = true;
-  tapResetBtn.disabled = false;
+function initTapSync() {
   tapIdx = 0;
-  updateTapDisplay();
+  cues.forEach(c => c.startTime = null);
+  tapBtn.disabled = false;
+  tapUndo.disabled = true;
+  updateTapUI();
   renderTimingList();
 }
 
-function updateTapDisplay() {
+function updateTapUI() {
   if (tapIdx >= cues.length) {
-    tapCueDisp.textContent = '✅ All cues tapped!';
-    tapNextDisp.textContent = '';
-    tapProgress.textContent = cues.length + ' / ' + cues.length;
+    tapCueEl.textContent = '✅ All cues tapped!';
+    tapNextEl.textContent = '';
     tapBtn.disabled = true;
-    return;
+  } else {
+    tapCueEl.textContent = cues[tapIdx].lines.join('  |  ');
+    tapNextEl.textContent = tapIdx+1 < cues.length ? 'Next → ' + cues[tapIdx+1].lines.join(' | ') : '(last cue)';
+    tapBtn.disabled = false;
   }
-  tapCueDisp.textContent = cues[tapIdx].lines.join(' | ');
-  tapNextDisp.textContent = tapIdx + 1 < cues.length ? 'Next: ' + cues[tapIdx + 1].lines.join(' | ') : '(last cue)';
-  tapProgress.textContent = tapIdx + ' / ' + cues.length + ' tapped';
+  tapProgEl.textContent = tapIdx + ' / ' + cues.length;
+}
+
+function doTap() {
+  if (tapIdx >= cues.length) return;
+  cues[tapIdx].startTime = parseFloat(syncAudio.currentTime.toFixed(2));
+  tapIdx++;
+  tapUndo.disabled = false;
+  updateTapUI();
+  renderTimingList();
 }
 
 tapBtn.addEventListener('click', doTap);
+tapUndo.addEventListener('click', () => {
+  if (tapIdx === 0) return;
+  tapIdx--;
+  cues[tapIdx].startTime = null;
+  if (tapIdx === 0) tapUndo.disabled = true;
+  updateTapUI();
+  renderTimingList();
+});
+document.getElementById('tap-reset').addEventListener('click', () => {
+  tapIdx = 0; cues.forEach(c => c.startTime = null);
+  tapUndo.disabled = true;
+  updateTapUI(); renderTimingList();
+});
+document.getElementById('add-cue-btn').addEventListener('click', () => {
+  cues.push({lines:['NEW LINE'], startTime:null, endTime:null});
+  renderTimingList();
+});
 document.addEventListener('keydown', e => {
-  if (e.code === 'Enter' && document.getElementById('panel-sync').classList.contains('active') && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+  if (e.code==='Enter' && document.getElementById('panel-sync').classList.contains('active')
+      && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
     e.preventDefault(); doTap();
   }
 });
 
-function doTap() {
-  if (tapIdx >= cues.length) return;
-  const t = audioSync.currentTime;
-  timings[tapIdx] = parseFloat(t.toFixed(2));
-  cues[tapIdx].startTime = timings[tapIdx];
-  tapIdx++;
-  tapUndoBtn.disabled = false;
-  updateTapDisplay();
-  renderTimingList();
-}
-
-tapUndoBtn.addEventListener('click', () => {
-  if (tapIdx === 0) return;
-  tapIdx--;
-  timings[tapIdx] = null;
-  cues[tapIdx].startTime = null;
-  updateTapDisplay();
-  renderTimingList();
-  if (tapIdx === 0) tapUndoBtn.disabled = true;
-});
-
-tapResetBtn.addEventListener('click', () => {
-  tapIdx = 0;
-  timings = cues.map(() => null);
-  cues.forEach(c => c.startTime = null);
-  tapUndoBtn.disabled = true;
-  updateTapDisplay();
-  renderTimingList();
-});
-
-// ══════════════════════════════════════════════
-// TIMING LIST (manual edit)
-// ══════════════════════════════════════════════
 function renderTimingList() {
   const list = document.getElementById('timing-list');
   list.innerHTML = '';
   cues.forEach((cue, i) => {
     const row = document.createElement('div');
-    row.className = 'timing-row';
-    row.innerHTML = `
-      <span class="t-idx">#${i+1}</span>
-      <span class="t-time"><input type="number" step="0.1" min="0" value="${cue.startTime !== null ? cue.startTime : ''}" placeholder="sec" data-idx="${i}"></span>
-      <span class="t-text">${cue.lines.join(' | ')}</span>
-      <span class="t-del" data-idx="${i}" title="Clear timing">✕</span>
-    `;
+    row.className = 'tr';
+    row.innerHTML = `<span class="ti">#${i+1}</span>
+      <span class="tt"><input type="number" step="0.1" min="0" value="${cue.startTime??''}" placeholder="sec" data-i="${i}"></span>
+      <span class="tx">${cue.lines.join(' | ')}</span>
+      <span class="td" data-i="${i}">✕</span>`;
     list.appendChild(row);
   });
-
-  // input listeners
-  list.querySelectorAll('input[type=number]').forEach(inp => {
-    inp.addEventListener('change', e => {
-      const idx = parseInt(e.target.dataset.idx);
-      const val = parseFloat(e.target.value);
-      cues[idx].startTime = isNaN(val) ? null : val;
-      timings[idx] = cues[idx].startTime;
-    });
-  });
-  list.querySelectorAll('.t-del').forEach(btn => {
-    btn.addEventListener('click', e => {
-      const idx = parseInt(e.target.dataset.idx);
-      cues[idx].startTime = null; timings[idx] = null;
-      renderTimingList();
-    });
-  });
+  list.querySelectorAll('input').forEach(inp => inp.addEventListener('change', e => {
+    const i = +e.target.dataset.i;
+    const v = parseFloat(e.target.value);
+    cues[i].startTime = isNaN(v) ? null : v;
+  }));
+  list.querySelectorAll('.td').forEach(btn => btn.addEventListener('click', e => {
+    cues[+e.target.dataset.i].startTime = null; renderTimingList();
+  }));
 }
 
-document.getElementById('add-timing-btn').addEventListener('click', () => {
-  cues.push({ lines: ['NEW CUE — edit me'], startTime: null });
-  timings.push(null);
-  renderTimingList();
-});
-
-// ══════════════════════════════════════════════
-// SYNC → NEXT
-// ══════════════════════════════════════════════
-document.getElementById('sync-next-btn').addEventListener('click', () => {
-  const hasTiming = cues.some(c => c.startTime !== null);
-  if (!hasTiming) { alert('Please tap at least one cue timing!'); return; }
-  // sort cues by startTime (nulls go to end)
-  cues.sort((a,b) => {
-    if (a.startTime === null) return 1;
-    if (b.startTime === null) return -1;
-    return a.startTime - b.startTime;
-  });
-  // compute endTimes
-  cues.forEach((c, i) => {
-    c.endTime = (i + 1 < cues.length && cues[i+1].startTime !== null) ? cues[i+1].startTime : null;
-  });
+// ══════════════════════════════════════════
+// SYNC → RECORD TAB
+// ══════════════════════════════════════════
+document.getElementById('sync-go').addEventListener('click', () => {
+  if (!cues.some(c => c.startTime !== null)) { alert('Tap at least one cue!'); return; }
+  finalizeCues();
+  syncControlsToRecord();
   buildStage();
   goTab('record');
 });
-document.getElementById('sync-back-btn').addEventListener('click', () => goTab('setup'));
+document.getElementById('sync-back').addEventListener('click', () => goTab('setup'));
 
-// ══════════════════════════════════════════════
+function finalizeCues() {
+  cues.sort((a,b) => {
+    if (a.startTime===null) return 1;
+    if (b.startTime===null) return -1;
+    return a.startTime - b.startTime;
+  });
+  cues.forEach((c,i) => {
+    c.endTime = (i+1 < cues.length && cues[i+1].startTime !== null) ? cues[i+1].startTime : null;
+  });
+}
+
+function syncControlsToRecord() {
+  const map = [['s-mode','r-mode'],['s-wsp','r-wsp'],['s-csp','r-csp'],['s-cpause','r-cpause'],['s-font','r-font']];
+  map.forEach(([from,to]) => {
+    const fe = document.getElementById(from), te = document.getElementById(to);
+    if (fe && te) te.value = fe.value;
+  });
+  updateRecLabels();
+}
+
+// ══════════════════════════════════════════
+// RECORD TAB SLIDERS
+// ══════════════════════════════════════════
+function updateRecLabels() {
+  [['r-wsp','r-wsp-v',''],['r-csp','r-csp-v',''],['r-cpause','r-cpause-v','ms'],['r-font','r-font-v','vw']].forEach(([id,vid,suf]) => {
+    const el = document.getElementById(id);
+    if (el) document.getElementById(vid).textContent = el.value + suf;
+  });
+}
+[['r-wsp','r-wsp-v',''],['r-csp','r-csp-v',''],['r-cpause','r-cpause-v','ms'],['r-font','r-font-v','vw']].forEach(([id,vid,suf]) => {
+  document.getElementById(id).addEventListener('input', e => {
+    document.getElementById(vid).textContent = e.target.value + suf;
+    // update font live
+    if (id==='r-font') document.querySelectorAll('.ch').forEach(c => c.style.fontSize = e.target.value+'vw');
+  });
+});
+
+// ══════════════════════════════════════════
 // BUILD STAGE DOM
-// ══════════════════════════════════════════════
+// ══════════════════════════════════════════
 const stageInner = document.getElementById('stage-inner');
 
 function buildStage() {
   stageInner.innerHTML = '';
   stageUnits = [];
-  const fs = (document.getElementById('font-size-preview').value || document.getElementById('font-size').value) + 'vw';
-  const mode = document.getElementById('hl-mode-preview').value ||
-               document.getElementById('hl-mode').value;
+  const fs = document.getElementById('r-font').value + 'vw';
+  const mode = document.getElementById('r-mode').value;
 
   cues.forEach((cue, cIdx) => {
-    const cueDiv = document.createElement('div');
-    cueDiv.className = 'cue-div';
-    cueDiv.dataset.cue = cIdx;
-    cueDiv.style.display = 'none'; // hidden by default
+    const div = document.createElement('div');
+    div.className = 'cue-div';
+    div.dataset.cue = cIdx;
 
-    cue.lines.forEach((line, lIdx) => {
-      const lineSpan = document.createElement('span');
-      lineSpan.className = 'stage-line';
+    cue.lines.forEach((line, li) => {
+      const span = document.createElement('span');
+      span.className = 'sl-line';
 
       if (mode === 'word') {
-        line.split(/\s+/).forEach((word, wi) => {
-          if (wi > 0) { const sp=document.createElement('span'); sp.className='char sp'; sp.textContent=' '; sp.style.fontSize=fs; lineSpan.appendChild(sp); }
-          const span = document.createElement('span');
-          span.className = 'char'; span.textContent = word; span.style.fontSize = fs;
-          lineSpan.appendChild(span);
-          stageUnits.push({ el:span, cueIdx:cIdx });
+        line.split(/\s+/).forEach((w, wi) => {
+          if (wi>0) { const s=document.createElement('span'); s.className='ch sp'; s.textContent=' '; s.style.fontSize=fs; span.appendChild(s); }
+          const s = document.createElement('span');
+          s.className='ch'; s.textContent=w; s.style.fontSize=fs;
+          span.appendChild(s);
+          stageUnits.push({el:s, cueIdx:cIdx});
         });
       } else {
-        for (let ci=0; ci<line.length; ci++) {
-          const ch = line[ci];
-          const span = document.createElement('span');
-          span.className = ch===' ' ? 'char sp' : 'char';
-          span.textContent = ch; span.style.fontSize = fs;
-          lineSpan.appendChild(span);
-          if (ch !== ' ') stageUnits.push({ el:span, cueIdx:cIdx });
+        for (let ci=0;ci<line.length;ci++) {
+          const ch=line[ci];
+          const s=document.createElement('span');
+          s.className=ch===' '?'ch sp':'ch'; s.textContent=ch; s.style.fontSize=fs;
+          span.appendChild(s);
+          if (ch!==' ') stageUnits.push({el:s, cueIdx:cIdx});
         }
       }
-      cueDiv.appendChild(lineSpan);
-      if (lIdx < cue.lines.length-1) cueDiv.appendChild(document.createElement('br'));
+
+      div.appendChild(span);
+      if (li < cue.lines.length-1) div.appendChild(document.createElement('br'));
     });
-    stageInner.appendChild(cueDiv);
+    stageInner.appendChild(div);
   });
-  setStageHeight();
 }
 
-function showCueOnStage(idx) {
-  document.querySelectorAll('#stage-inner .cue-div').forEach((el,i) => el.style.display = i===idx ? 'block' : 'none');
-  currentDisplayCue = idx;
+// ══════════════════════════════════════════
+// SHOW/HIDE CUE ON STAGE
+// ══════════════════════════════════════════
+function showCue(idx) {
+  document.querySelectorAll('.cue-div').forEach((el,i) => el.classList.toggle('on', i===idx));
+  activeCueIdx = idx;
 }
-function hideStageLyrics() {
-  document.querySelectorAll('#stage-inner .cue-div').forEach(el => el.style.display = 'none');
-  currentDisplayCue = -1;
-  scheduleCanvasDraw();
+function hideCue() {
+  document.querySelectorAll('.cue-div').forEach(el => el.classList.remove('on'));
+  activeCueIdx = -1;
+}
+function clearHL() {
+  document.querySelectorAll('.ch').forEach(c => c.classList.remove('hl'));
 }
 
-// ══════════════════════════════════════════════
-// PREVIEW PLAYBACK — audio-driven
-// ══════════════════════════════════════════════
-let previewAudioEl = null;
+// ══════════════════════════════════════════
+// SEEK BAR
+// ══════════════════════════════════════════
+const seekBar = document.getElementById('seek-bar');
+const timeLabel = document.getElementById('time-label');
+let seekDragging = false;
 
-document.getElementById('preview-play-btn').addEventListener('click', startPreview);
-document.getElementById('preview-stop-btn').addEventListener('click', stopPreview);
-
-function startPreview() {
-  if (!cues.length || !audioSrc) return;
-  stopPreview();
-
-  // create audio for preview tab
-  if (!previewAudioEl) {
-    previewAudioEl = new Audio(audioSrc);
-    previewAudioEl.addEventListener('ended', stopPreview);
-  } else {
-    previewAudioEl.currentTime = 0;
+seekBar.addEventListener('mousedown', () => seekDragging = true);
+seekBar.addEventListener('touchstart', () => seekDragging = true, {passive:true});
+seekBar.addEventListener('mouseup', () => { seekDragging = false; seekTo(parseFloat(seekBar.value)); });
+seekBar.addEventListener('touchend', () => { seekDragging = false; seekTo(parseFloat(seekBar.value)); });
+seekBar.addEventListener('input', () => {
+  if (audioEl) {
+    const t = parseFloat(seekBar.value);
+    timeLabel.textContent = fmt(t) + ' / ' + fmt(audioEl.duration||0);
   }
+});
 
-  previewRunning = true;
-  hideStageLyrics();
-  clearHighlights();
+function seekTo(t) {
+  if (!audioEl || !isFinite(t)) return;
+  audioEl.currentTime = t;
+  // reset highlight state for new position
+  clearHL();
   unitIdx = 0;
-  document.getElementById('preview-play-btn').disabled = true;
-  previewAudioEl.play();
-  tickPreview();
+  hideCue();
+  activeCueIdx = -1;
+  // let the RAF loop pick up from new position
 }
 
-function stopPreview() {
-  previewRunning = false;
-  clearTimeout(previewTimer);
-  cancelAnimationFrame(previewRafId);
-  if (previewAudioEl) { previewAudioEl.pause(); previewAudioEl.currentTime = 0; }
-  hideStageLyrics();
-  clearHighlights();
-  document.getElementById('preview-play-btn').disabled = false;
-  document.getElementById('progress-bar').style.width = '0%';
-  document.getElementById('time-display').textContent = '0.0s';
+function fmt(s) {
+  if (!isFinite(s)) return '0:00';
+  const m = Math.floor(s/60), sec = Math.floor(s%60);
+  return m+':'+String(sec).padStart(2,'0');
 }
 
-let previewRafId = null;
+function updateSeekBar() {
+  if (!audioEl || seekDragging) return;
+  const t = audioEl.currentTime, d = audioEl.duration||0;
+  seekBar.max = d;
+  seekBar.value = t;
+  // gradient fill
+  const pct = d ? (t/d*100) : 0;
+  seekBar.style.background = `linear-gradient(to right,#e94560 ${pct}%,#e94560 ${pct}%,#1a3a6a ${pct}%,#1a3a6a 100%)`;
+  timeLabel.textContent = fmt(t) + ' / ' + fmt(d);
+}
 
-function tickPreview() {
-  if (!previewRunning) return;
-  const t = previewAudioEl ? previewAudioEl.currentTime : 0;
-  document.getElementById('time-display').textContent = t.toFixed(1) + 's';
+// ══════════════════════════════════════════
+// MAIN RAF LOOP — drives everything from audio.currentTime
+// ══════════════════════════════════════════
+function rafLoop() {
+  if (!isPlaying) return;
+  const t = audioEl.currentTime;
+  updateSeekBar();
 
-  // find which cue should be showing
-  let activeCue = -1;
-  for (let i = 0; i < cues.length; i++) {
+  // find which cue should be active
+  let wantCue = -1;
+  for (let i=0; i<cues.length; i++) {
     const c = cues[i];
     if (c.startTime === null) continue;
-    const end = c.endTime !== null ? c.endTime : c.startTime + 999;
-    if (t >= c.startTime && t < end) { activeCue = i; break; }
+    const end = c.endTime !== null ? c.endTime : c.startTime + 9999;
+    if (t >= c.startTime && t < end) { wantCue = i; break; }
   }
 
-  if (activeCue !== currentDisplayCue) {
-    if (activeCue === -1) {
-      hideStageLyrics();
-      clearHighlights();
+  // cue changed?
+  if (wantCue !== activeCueIdx) {
+    clearHL();
+    clearTimeout(hlTimer);
+    if (wantCue === -1) {
+      hideCue();
       unitIdx = 0;
     } else {
-      hideStageLyrics();
-      clearHighlights();
-      showCueOnStage(activeCue);
-      unitIdx = stageUnits.findIndex(u => u.cueIdx === activeCue);
+      showCue(wantCue);
+      // find first unit of this cue
+      unitIdx = stageUnits.findIndex(u => u.cueIdx === wantCue);
       if (unitIdx < 0) unitIdx = 0;
-      scheduleHighlightTick();
+      // start highlight ticker
+      clearTimeout(hlTimer);
+      hlTimer = setTimeout(hlTick, 0);
     }
-    scheduleCanvasDraw();
   }
 
-  // progress bar
-  if (previewAudioEl && previewAudioEl.duration) {
-    document.getElementById('progress-bar').style.width = (t / previewAudioEl.duration * 100) + '%';
-  }
-
-  previewRafId = requestAnimationFrame(tickPreview);
+  rafId = requestAnimationFrame(rafLoop);
 }
 
-// highlight ticker — runs on setTimeout independent of rAF
-let hlTimer = null;
-function scheduleHighlightTick() {
-  clearTimeout(hlTimer);
-  hlTimer = setTimeout(hlTick, 0);
-}
-
+// ══════════════════════════════════════════
+// HIGHLIGHT TICKER — fully independent setTimeout
+// ══════════════════════════════════════════
 function hlTick() {
-  if (!previewRunning) return;
+  if (!isPlaying) return;
   if (unitIdx >= stageUnits.length) return;
   const u = stageUnits[unitIdx];
-  if (u.cueIdx !== currentDisplayCue) return; // cue changed, stop
+  if (u.cueIdx !== activeCueIdx) return; // cue changed — stop this ticker
   u.el.classList.add('hl');
-  scheduleCanvasDraw();
+  drawCanvas(); // paint immediately on each highlight
   unitIdx++;
-  const mode = document.getElementById('hl-mode-preview').value;
-  const speed = mode === 'char'
-    ? parseInt(document.getElementById('char-speed-preview').value)
-    : parseInt(document.getElementById('word-speed-preview').value);
-  hlTimer = setTimeout(hlTick, speed);
+  const mode = document.getElementById('r-mode').value;
+  const spd = mode==='char'
+    ? parseInt(document.getElementById('r-csp').value)
+    : parseInt(document.getElementById('r-wsp').value);
+  hlTimer = setTimeout(hlTick, spd);
 }
 
-function clearHighlights() {
-  document.querySelectorAll('.char').forEach(c => c.classList.remove('hl'));
-  scheduleCanvasDraw();
+// ══════════════════════════════════════════
+// PLAY / STOP
+// ══════════════════════════════════════════
+document.getElementById('r-play').addEventListener('click', startPlayback);
+document.getElementById('r-stop').addEventListener('click', stopPlayback);
+
+function startPlayback() {
+  if (!audioSrc || !cues.length) { alert('Set up audio and lyrics first!'); return; }
+  stopPlayback();
+  buildStage();
+
+  audioEl = document.getElementById('audio-rec');
+  audioEl.src = audioSrc;
+  audioEl.currentTime = seekDragging ? parseFloat(seekBar.value) : audioEl.currentTime || 0;
+  audioEl.play();
+  audioEl.onended = () => stopPlayback();
+
+  isPlaying = true;
+  hideCue(); clearHL();
+  unitIdx = 0; activeCueIdx = -1;
+  rafId = requestAnimationFrame(rafLoop);
 }
 
-// ══════════════════════════════════════════════
-// CANVAS RECORDER
-// ══════════════════════════════════════════════
+function stopPlayback() {
+  isPlaying = false;
+  cancelAnimationFrame(rafId);
+  clearTimeout(hlTimer);
+  if (audioEl) { audioEl.pause(); }
+  hideCue(); clearHL();
+  updateSeekBar();
+}
+
+// ══════════════════════════════════════════
+// CANVAS DRAWING — reads directly from DOM highlight state
+// ══════════════════════════════════════════
 const recCanvas = document.getElementById('rec-canvas');
-let canvasDrawPending = false;
 
-function scheduleCanvasDraw() {
-  if (!isRecording || canvasDrawPending) return;
-  canvasDrawPending = true;
-  requestAnimationFrame(drawToCanvas);
-}
-
-function drawToCanvas() {
-  canvasDrawPending = false;
+function drawCanvas() {
   if (!isRecording) return;
   const ctx = recCanvas.getContext('2d');
   const W = recCanvas.width, H = recCanvas.height;
   ctx.fillStyle = '#00FF00';
-  ctx.fillRect(0, 0, W, H);
+  ctx.fillRect(0,0,W,H);
 
-  if (currentDisplayCue < 0) return; // pure green — no lyrics
+  if (activeCueIdx < 0) return; // pure green screen
 
-  const cueDiv = stageInner.querySelector(`.cue-div[data-cue="${currentDisplayCue}"]`);
-  if (!cueDiv || cueDiv.style.display === 'none') return;
+  const cueDiv = stageInner.querySelector(`.cue-div[data-cue="${activeCueIdx}"]`);
+  if (!cueDiv || !cueDiv.classList.contains('on')) return;
 
-  const fs = parseFloat(document.getElementById('font-size-preview').value);
-  const fontPx = Math.round(fs / 100 * W);
+  const fontPx = Math.round(parseFloat(document.getElementById('r-font').value) / 100 * W);
   ctx.font = `900 ${fontPx}px "Arial Black", Arial, sans-serif`;
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
 
-  const subLines = Array.from(cueDiv.querySelectorAll('.stage-line'));
+  const lines = Array.from(cueDiv.querySelectorAll('.sl-line'));
   const lineH = fontPx * 1.28;
-  const totalH = lineH * subLines.length;
+  const totalH = lineH * lines.length;
 
-  subLines.forEach((subLine, li) => {
+  lines.forEach((line, li) => {
     const y = H/2 - totalH/2 + lineH*li + lineH/2;
-    const chars = Array.from(subLine.querySelectorAll('.char'));
+    const chars = Array.from(line.querySelectorAll('.ch'));
     const fullText = chars.map(c=>c.textContent).join('');
     const tw = ctx.measureText(fullText).width;
-    const scale = tw > W*0.96 ? (W*0.96)/tw : 1;
+    const scale = tw > W*0.95 ? (W*0.95)/tw : 1;
+
     ctx.save();
-    if (scale<1) ctx.scale(scale,1);
-    let x = (scale<1 ? W/scale : W)/2 - tw/2;
-    chars.forEach(charEl => {
-      const ch = charEl.textContent, cw = ctx.measureText(ch).width, cx = x+cw/2;
-      [[-2,-2],[2,-2],[-2,2],[2,2],[0,3]].forEach(([ox,oy]) => { ctx.fillStyle='#000'; ctx.fillText(ch,cx+ox,y+oy); });
-      ctx.fillStyle = charEl.classList.contains('hl') ? '#FFE600' : '#FFF';
-      ctx.fillText(ch,cx,y);
-      x+=cw;
+    if (scale < 1) {
+      ctx.translate(W/2, y);
+      ctx.scale(scale, 1);
+      ctx.translate(-W/2, -y);
+    }
+
+    let x = W/2 - tw/2;
+    chars.forEach(ch => {
+      const txt = ch.textContent;
+      const cw = ctx.measureText(txt).width;
+      const cx = x + cw/2;
+      // black outline
+      ctx.fillStyle = '#000';
+      [[-2,-2],[2,-2],[-2,2],[2,2],[0,3]].forEach(([ox,oy]) => ctx.fillText(txt, cx+ox, y+oy));
+      // colored fill
+      ctx.fillStyle = ch.classList.contains('hl') ? '#FFE600' : '#FFFFFF';
+      ctx.fillText(txt, cx, y);
+      x += cw;
     });
     ctx.restore();
   });
 }
 
+// continuous canvas loop while recording (25fps)
 function startCanvasLoop() {
-  function loop() { if (!isRecording) return; drawToCanvas(); recRafId = setTimeout(loop, 1000/25); }
+  clearTimeout(recCanvasTimer);
+  function loop() {
+    if (!isRecording) return;
+    drawCanvas();
+    recCanvasTimer = setTimeout(loop, 1000/25);
+  }
   loop();
 }
 
-// ══════════════════════════════════════════════
+// ══════════════════════════════════════════
 // RECORD BUTTON
-// ══════════════════════════════════════════════
-document.getElementById('record-btn').addEventListener('click', async () => {
+// ══════════════════════════════════════════
+document.getElementById('r-record').addEventListener('click', async () => {
   if (isRecording) { stopRecording(); return; }
 
-  const stageRect = stage.getBoundingClientRect();
-  const capH=480, capW=Math.round(capH*stageRect.width/stageRect.height);
-  recCanvas.width=capW; recCanvas.height=capH;
-  drawToCanvas();
+  const stageEl = document.getElementById('stage');
+  const capH = 480, capW = Math.round(capH * stageEl.offsetWidth / stageEl.offsetHeight);
+  recCanvas.width = capW; recCanvas.height = capH;
+
+  // draw first frame so stream isn't blank
+  activeCueIdx = -1; drawCanvas();
 
   let stream;
   try { stream = recCanvas.captureStream(25); }
-  catch(e) { alert('Recording not supported. Use Chrome or Edge.'); return; }
+  catch(e) { alert('Recording not supported. Please use Chrome.'); return; }
 
   const mimeType = ['video/mp4;codecs=avc1','video/mp4','video/webm;codecs=vp9','video/webm']
-    .find(t=>MediaRecorder.isTypeSupported(t))||'video/webm';
-  const ext = mimeType.startsWith('video/mp4')?'mp4':'webm';
+    .find(t => MediaRecorder.isTypeSupported(t)) || 'video/webm';
+  const ext = mimeType.startsWith('video/mp4') ? 'mp4' : 'webm';
 
-  recordedChunks=[];
-  try { mediaRecorder=new MediaRecorder(stream,{mimeType,videoBitsPerSecond:3000000}); }
-  catch(e) { mediaRecorder=new MediaRecorder(stream); }
+  recordedChunks = [];
+  try { mediaRecorder = new MediaRecorder(stream, {mimeType, videoBitsPerSecond:4000000}); }
+  catch(e) { mediaRecorder = new MediaRecorder(stream); }
 
-  mediaRecorder.ondataavailable=e=>{ if(e.data?.size>0) recordedChunks.push(e.data); };
-  mediaRecorder.onstop=()=>{
-    clearInterval(recTimerInterval); clearTimeout(recRafId);
-    isRecording=false;
-    document.getElementById('record-btn').textContent='⏺ Record Green Screen';
-    document.getElementById('record-btn').classList.remove('recording');
-    document.getElementById('rec-timer').classList.remove('active');
-    document.getElementById('rec-status').textContent='';
-    const blob=new Blob(recordedChunks,{type:mimeType});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');
-    a.href=url; a.download='green-screen-synced.'+ext;
+  mediaRecorder.ondataavailable = e => { if (e.data?.size>0) recordedChunks.push(e.data); };
+  mediaRecorder.onstop = () => {
+    clearInterval(recTimerInterval);
+    clearTimeout(recCanvasTimer);
+    isRecording = false;
+    const btn = document.getElementById('r-record');
+    btn.textContent = '⏺ Record'; btn.classList.remove('rec');
+    document.getElementById('rec-timer').classList.remove('on');
+
+    const blob = new Blob(recordedChunks, {type:mimeType});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href=url; a.download='green-screen-lyrics.'+ext;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    setTimeout(()=>URL.revokeObjectURL(url),8000);
+    setTimeout(()=>URL.revokeObjectURL(url), 8000);
   };
 
-  isRecording=true; mediaRecorder.start(200); startCanvasLoop();
-  // auto-start preview playback too
-  startPreview();
+  isRecording = true;
+  mediaRecorder.start(100); // collect chunks every 100ms
+  startCanvasLoop();
 
-  recStartTime=Date.now();
-  recTimerInterval=setInterval(()=>{
-    const s=Math.floor((Date.now()-recStartTime)/1000);
-    document.getElementById('rec-timer').textContent=String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
+  // also start playback
+  startPlayback();
+
+  const btn = document.getElementById('r-record');
+  btn.textContent='⏹ Stop & Save'; btn.classList.add('rec');
+  const rt = document.getElementById('rec-timer');
+  rt.classList.add('on'); rt.textContent='00:00';
+  const t0 = Date.now();
+  recTimerInterval = setInterval(()=>{
+    const s=Math.floor((Date.now()-t0)/1000);
+    rt.textContent=String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
   },1000);
-  document.getElementById('record-btn').textContent='⏹ Stop & Save';
-  document.getElementById('record-btn').classList.add('recording');
-  document.getElementById('rec-timer').classList.add('active');
-  document.getElementById('rec-timer').textContent='00:00';
-  document.getElementById('rec-status').textContent='Recording canvas + playing audio...';
 });
 
 function stopRecording() {
-  if (mediaRecorder?.state!=='inactive') mediaRecorder.stop();
-  stopPreview();
+  if (mediaRecorder?.state !== 'inactive') mediaRecorder.stop();
+  stopPlayback();
 }
+
+// init
+goTab('setup');
 </script>
 </body>
 </html>
