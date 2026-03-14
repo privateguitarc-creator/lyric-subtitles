@@ -6,13 +6,13 @@
 <title>Lyric Sync Tool</title>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
-body { font-family:'Segoe UI',sans-serif; background:#0d0d1a; color:#eee; overflow-x:hidden; user-select:none; }
+body { font-family:'Segoe UI',sans-serif; background:#0d0d1a; color:#eee; overflow-x:hidden; user-select:none; display:flex; flex-direction:column; height:100vh; }
 
-#tabs { display:flex; background:#16213e; border-bottom:2px solid #0f3460; flex-shrink:0; }
+#tabs { display:flex; background:#16213e; border-bottom:2px solid #0f3460; flex-shrink:0; z-index:2; }
 .tab { padding:9px 18px; font-size:0.82rem; font-weight:700; cursor:pointer; color:#666; border-bottom:3px solid transparent; transition:all 0.15s; text-transform:uppercase; letter-spacing:0.5px; }
 .tab.active { color:#e94560; border-bottom-color:#e94560; }
 
-.panel { display:none; padding:12px 16px; background:#16213e; flex-shrink:0; }
+.panel { display:none; padding:12px 16px; background:#16213e; flex-shrink:0; z-index:2; }
 .panel.active { display:block; }
 
 label { font-size:0.66rem; color:#aaa; display:block; margin-bottom:3px; text-transform:uppercase; letter-spacing:0.4px; }
@@ -59,7 +59,7 @@ audio { width:100%; border-radius:5px; }
 .tr .td { color:#e94560; cursor:pointer; padding:0 4px; font-size:0.88rem; flex-shrink:0; }
 
 /* PREVIEW & RECORD */
-#ctrl-bar { background:#16213e; padding:8px 14px; display:flex; flex-direction:column; gap:6px; flex-shrink:0; border-bottom:2px solid #0f3460; }
+#ctrl-bar { background:#16213e; padding:8px 14px; display:flex; flex-direction:column; gap:6px; flex-shrink:0; border-bottom:2px solid #0f3460; z-index:2; }
 #ctrl-row1 { display:flex; gap:7px; align-items:center; flex-wrap:wrap; }
 #ctrl-row2 { display:flex; gap:14px; align-items:center; flex-wrap:wrap; }
 
@@ -72,8 +72,8 @@ audio { width:100%; border-radius:5px; }
 #rec-timer.on { display:inline; }
 
 /* STAGE */
-#stage-wrap { flex:1; overflow:hidden; position:relative; min-height:0; }
-#stage { background:#00FF00; width:100%; height:100%; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+#stage-wrap { flex:1; overflow:hidden; position:relative; min-height:0; display:flex; flex-direction:column; }
+#stage { background:#00FF00; width:100%; flex:1; display:flex; align-items:center; justify-content:center; overflow:hidden; }
 #stage-inner { text-align:center; width:96%; line-height:1.25; }
 .cue-div { display:none; }
 .cue-div.on { display:block; }
@@ -142,14 +142,13 @@ canvas { display:none; }
 </div>
 
 <!-- ═══════════════ TAB 3: PREVIEW & RECORD ═══════════════ -->
-<div class="panel" id="panel-record" style="padding:0;">
+<div class="panel" id="panel-record" style="padding:0;flex-shrink:0;">
   <div id="ctrl-bar">
     <div id="ctrl-row1">
       <button id="r-play">▶ Preview</button>
       <button id="r-stop" class="sec">⏹ Stop</button>
       <button id="r-record" class="grn">⏺ Record</button>
       <span id="rec-timer">00:00</span>
-      <button id="r-speeds-toggle" class="sec" style="margin-left:4px;" title="Show/hide per-line speed controls">⚡ Line Speeds</button>
       <div class="sl" style="margin-left:4px;"><label>Mode</label><select id="r-mode"><option value="word">Word</option><option value="char">Char</option></select></div>
       <div class="sl"><label>Word ms</label><input type="range" id="r-wsp" min="80" max="1500" value="350" step="20" style="width:80px;"><span class="vl" id="r-wsp-v">350</span></div>
       <div class="sl"><label>Char ms</label><input type="range" id="r-csp" min="20" max="800" value="100" step="10" style="width:80px;"><span class="vl" id="r-csp-v">100</span></div>
@@ -165,25 +164,12 @@ canvas { display:none; }
   </div>
 
 <!-- Stage lives outside panel so it fills remaining space -->
+<div id="line-speeds-panel" style="background:#080818;border-top:1px solid #0f3460;padding:4px 8px;max-height:150px;overflow-y:auto;display:none;flex-shrink:0;">
+  <div style="font-size:0.62rem;color:#444;margin-bottom:3px;text-transform:uppercase;letter-spacing:0.3px;">⚡ Speed per line &nbsp;|&nbsp; 🐌 Left = Slow &nbsp; Right = Fast ⚡ &nbsp;|&nbsp; Click line to jump preview</div>
+  <div id="line-speeds-list"></div>
+</div>
 <div id="stage-wrap">
   <div id="stage"><div id="stage-inner"></div></div>
-  <!-- Speed panel floats over bottom of stage — toggle with button -->
-  <div id="line-speeds-panel" style="
-    position:absolute; bottom:0; left:0; right:0;
-    background:rgba(5,5,20,0.92);
-    border-top:2px solid #e94560;
-    padding:4px 10px 6px;
-    max-height:45%;
-    overflow-y:auto;
-    display:none;
-    z-index:10;
-    backdrop-filter:blur(4px);
-  ">
-    <div style="font-size:0.62rem;color:#888;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.3px;">
-      ⚡ Highlight Speed per Line &nbsp;|&nbsp; 🐌 Left=Slow &nbsp; Right=Fast ⚡ &nbsp;|&nbsp; Click line → jump preview
-    </div>
-    <div id="line-speeds-list"></div>
-  </div>
 </div>
 
 <canvas id="rec-canvas"></canvas>
@@ -997,16 +983,6 @@ function stopRecording() {
   if (mediaRecorder?.state !== 'inactive') mediaRecorder.stop();
   stopPlayback();
 }
-
-// Line speeds panel toggle
-document.getElementById('r-speeds-toggle').addEventListener('click', () => {
-  const panel = document.getElementById('line-speeds-panel');
-  const btn   = document.getElementById('r-speeds-toggle');
-  const isOpen = panel.style.display !== 'none';
-  panel.style.display = isOpen ? 'none' : 'block';
-  btn.style.background = isOpen ? '' : '#1a4a80';
-  btn.style.borderColor = isOpen ? '' : '#4a9ae8';
-});
 
 // init
 goTab('setup');
