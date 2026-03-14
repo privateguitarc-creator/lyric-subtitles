@@ -14,119 +14,48 @@
   label { font-size: 0.68rem; color: #aaa; display: block; margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.4px; }
   textarea { width: 100%; height: 72px; background: #0f3460; border: 1px solid #e94560; border-radius: 5px; color: #fff; padding: 7px 10px; font-size: 0.85rem; resize: vertical; outline: none; margin-bottom: 8px; }
   textarea::placeholder { color: #555; }
-
   .controls-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; margin-bottom: 8px; }
   .ctrl-group { display: flex; flex-direction: column; gap: 3px; }
   .slider-row { display: flex; align-items: center; gap: 6px; }
   input[type=range] { flex: 1; accent-color: #e94560; }
   .val-label { font-size: 0.76rem; color: #e94560; font-weight: 700; min-width: 54px; text-align: right; }
   select { background: #0f3460; color: #fff; border: 1px solid #444; border-radius: 4px; padding: 5px 8px; font-size: 0.82rem; outline: none; cursor: pointer; width: 100%; }
-
   .btn-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
   button { background: #e94560; color: #fff; border: none; border-radius: 5px; padding: 7px 14px; font-size: 0.82rem; font-weight: 700; cursor: pointer; transition: background 0.15s; user-select: none; }
   button:hover { background: #c73652; }
   button:disabled { opacity: 0.35; cursor: not-allowed; }
   button.sec { background: #0f3460; border: 1px solid #e94560; }
   button.sec:hover:not(:disabled) { background: #1a4a80; }
-
-  /* HOLD button — special */
-  #hold-btn {
-    background: #ff8c00;
-    border: 2px solid #ffc04d;
-    font-size: 0.85rem;
-    padding: 7px 18px;
-    letter-spacing: 0.5px;
-    box-shadow: 0 0 0 0 rgba(255,140,0,0.6);
-    transition: background 0.1s, box-shadow 0.1s, transform 0.1s;
-  }
-  #hold-btn.held {
-    background: #ff3300;
-    border-color: #ff7755;
-    box-shadow: 0 0 12px 4px rgba(255,60,0,0.7);
-    transform: scale(1.06);
-  }
-  #hold-btn:disabled { opacity: 0.35; }
-
-  /* SCREENSHOT button */
-  #screenshot-btn {
-    background: #1a7a4a;
-    border: 1px solid #2ecc71;
-  }
-  #screenshot-btn:hover:not(:disabled) { background: #145e38; }
-
+  #record-btn { background: #c0392b; border: 2px solid #e74c3c; }
+  #record-btn.recording { background: #e74c3c; animation: pulse 1s infinite; }
+  #record-btn:hover:not(:disabled):not(.recording) { background: #a93226; }
+  @keyframes pulse { 0%,100%{box-shadow:0 0 8px 2px rgba(231,76,60,0.5)} 50%{box-shadow:0 0 18px 7px rgba(231,76,60,0.9)} }
+  #rec-timer { font-size: 0.78rem; color: #e74c3c; font-weight: 700; margin-left: 2px; display: none; }
+  #rec-timer.active { display: inline; }
   #cue-info { font-size: 0.78rem; color: #888; margin-left: 4px; }
-
   #progress-bar-wrap { background: #000; height: 3px; }
   #progress-bar { height: 100%; background: #e94560; width: 0%; transition: width 0.1s linear; }
 
-  /* ── STAGE ── */
-  #stage {
-    background: #00FF00;
-    width: 100vw;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-    overflow: hidden;
-    cursor: grab;
-  }
-  #stage:active { cursor: grabbing; }
+  /* hidden canvas used for recording */
+  #rec-canvas { display: none; }
 
-  /* scroll hint */
-  #scroll-hint {
-    position: absolute;
-    bottom: 10px;
-    right: 14px;
-    font-size: 0.65rem;
-    color: rgba(0,100,0,0.55);
-    font-family: 'Segoe UI', sans-serif;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-    pointer-events: none;
-    text-transform: uppercase;
-  }
-
+  #stage { background: #00FF00; width: 100vw; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; }
   #subtitle-block { text-align: center; width: 92%; padding: 0; }
   .cue-block { display: none; line-height: 1.25; }
   .sub-line { display: block; }
-
-  .char {
-    display: inline;
-    font-family: 'Arial Black', 'Arial', sans-serif;
-    font-weight: 900;
-    text-transform: uppercase;
-    color: #ffffff;
-    text-shadow: 2px 2px 0 #000, -2px 2px 0 #000, 2px -2px 0 #000, -2px -2px 0 #000, 0 3px 8px rgba(0,0,0,0.9);
-    transition: color 0.05s ease;
-  }
+  .char { display: inline; font-family: 'Arial Black','Arial',sans-serif; font-weight: 900; text-transform: uppercase; color: #ffffff; text-shadow: 2px 2px 0 #000,-2px 2px 0 #000,2px -2px 0 #000,-2px -2px 0 #000,0 3px 8px rgba(0,0,0,0.9); transition: color 0.05s ease; }
   .char.highlighted { color: #FFE600; }
   .char.space { display: inline; }
-
-  /* screenshot flash */
-  @keyframes flashWhite {
-    0%   { opacity: 0; }
-    20%  { opacity: 0.7; }
-    100% { opacity: 0; }
-  }
-  #flash-overlay {
-    position: fixed; inset: 0;
-    background: white;
-    opacity: 0;
-    pointer-events: none;
-    z-index: 9999;
-  }
-  #flash-overlay.flash { animation: flashWhite 0.4s ease forwards; }
 </style>
 </head>
 <body>
 
-<div id="flash-overlay"></div>
+<canvas id="rec-canvas"></canvas>
 
 <div id="editor">
   <h1>🎵 Lyric Subtitle Tool</h1>
   <label>Paste Lyrics</label>
   <textarea id="lyrics-input" placeholder="AAKE RAAS RACHA JAA&#10;AAKE RAAS RACHA JAA&#10;MURLIWALE BANSIWALE&#10;AAKE RAAS RACHA JAA"></textarea>
-
   <div class="controls-grid">
     <div class="ctrl-group">
       <label>Highlight Mode</label>
@@ -172,27 +101,24 @@
       </select>
     </div>
   </div>
-
   <div class="btn-row">
     <button id="load-btn">⬆ Load</button>
     <button class="sec" id="play-btn" disabled>▶ Play</button>
     <button class="sec" id="pause-btn" disabled>⏸ Pause</button>
-    <button id="hold-btn" disabled>⏺ HOLD</button>
     <button class="sec" id="reset-btn" disabled>⏹ Reset</button>
     <button class="sec" id="prev-btn" disabled>◀ Prev</button>
     <button class="sec" id="next-btn" disabled>Next ▶</button>
-    <button id="screenshot-btn" disabled>📸 Screenshot</button>
+    <button id="record-btn" disabled>⏺ Record</button>
+    <span id="rec-timer">00:00</span>
     <span id="cue-info">Load lyrics to begin</span>
   </div>
 </div>
 
 <div id="progress-bar-wrap"><div id="progress-bar"></div></div>
-
 <div id="stage">
   <div id="subtitle-block">
     <span class="char" style="font-size:4vw;color:#009900;">PASTE LYRICS &amp; CLICK LOAD</span>
   </div>
-  <div id="scroll-hint">↕ Scroll to change cue</div>
 </div>
 
 <script>
@@ -220,20 +146,22 @@ const linesPerCue  = document.getElementById('lines-per-cue');
 const loadBtn      = document.getElementById('load-btn');
 const playBtn      = document.getElementById('play-btn');
 const pauseBtn     = document.getElementById('pause-btn');
-const holdBtn      = document.getElementById('hold-btn');
 const resetBtn     = document.getElementById('reset-btn');
 const prevBtn      = document.getElementById('prev-btn');
 const nextBtn      = document.getElementById('next-btn');
-const screenshotBtn= document.getElementById('screenshot-btn');
+const recordBtn    = document.getElementById('record-btn');
+const recTimer     = document.getElementById('rec-timer');
 const cueInfo      = document.getElementById('cue-info');
 const block        = document.getElementById('subtitle-block');
 const progressBar  = document.getElementById('progress-bar');
 const stage        = document.getElementById('stage');
-const flashOverlay = document.getElementById('flash-overlay');
+const recCanvas    = document.getElementById('rec-canvas');
 
 // ── State ──
 let cues = [], allUnits = [], unitIndex = 0, currentCue = 0;
-let playing = false, held = false, timer = null;
+let playing = false, timer = null;
+let mediaRecorder = null, recordedChunks = [], isRecording = false;
+let recStartTime = 0, recTimerInterval = null;
 
 // ── Sliders ──
 wordSpeedEl.addEventListener('input', () => wordSpeedVal.textContent = wordSpeedEl.value + ' ms');
@@ -254,7 +182,7 @@ loadBtn.addEventListener('click', () => {
   for (let i = 0; i < lines.length; i += n) cues.push(lines.slice(i, i + n));
   buildDOM();
   resetState();
-  [playBtn, pauseBtn, holdBtn, resetBtn, prevBtn, nextBtn, screenshotBtn].forEach(b => b.disabled = false);
+  [playBtn, pauseBtn, resetBtn, prevBtn, nextBtn, recordBtn].forEach(b => b.disabled = false);
   updateNav();
   setStageHeight();
 });
@@ -269,24 +197,14 @@ function buildDOM() {
   cues.forEach((lines, cIdx) => {
     const cueDiv = document.createElement('div');
     cueDiv.className = 'cue-block';
-
     lines.forEach((line, lIdx) => {
       const lineSpan = document.createElement('span');
       lineSpan.className = 'sub-line';
-
       if (mode === 'word') {
         line.split(/\s+/).forEach((word, wi) => {
-          if (wi > 0) {
-            const sp = document.createElement('span');
-            sp.className = 'char space';
-            sp.textContent = ' ';
-            sp.style.fontSize = fs;
-            lineSpan.appendChild(sp);
-          }
+          if (wi > 0) { const sp = document.createElement('span'); sp.className='char space'; sp.textContent=' '; sp.style.fontSize=fs; lineSpan.appendChild(sp); }
           const span = document.createElement('span');
-          span.className = 'char';
-          span.textContent = word;
-          span.style.fontSize = fs;
+          span.className = 'char'; span.textContent = word; span.style.fontSize = fs;
           lineSpan.appendChild(span);
           allUnits.push({ el: span, cueIdx: cIdx });
         });
@@ -295,20 +213,16 @@ function buildDOM() {
           const ch = line[ci];
           const span = document.createElement('span');
           span.className = ch === ' ' ? 'char space' : 'char';
-          span.textContent = ch;
-          span.style.fontSize = fs;
+          span.textContent = ch; span.style.fontSize = fs;
           lineSpan.appendChild(span);
           if (ch !== ' ') allUnits.push({ el: span, cueIdx: cIdx });
         }
       }
-
       cueDiv.appendChild(lineSpan);
       if (lIdx < lines.length - 1) cueDiv.appendChild(document.createElement('br'));
     });
-
     block.appendChild(cueDiv);
   });
-
   showCue(0);
 }
 
@@ -318,167 +232,172 @@ function showCue(idx) {
 }
 
 function resetState() {
-  playing = false; held = false; clearTimeout(timer);
-  unitIndex = 0;
-  holdBtn.classList.remove('held');
+  playing = false; clearTimeout(timer); unitIndex = 0;
   document.querySelectorAll('.char').forEach(c => c.classList.remove('highlighted'));
   if (cues.length) showCue(0);
   updateProgress();
 }
 
-function getSpeed() {
-  return modeEl.value === 'char' ? parseInt(charSpeedEl.value) : parseInt(wordSpeedEl.value);
-}
+function getSpeed() { return modeEl.value === 'char' ? parseInt(charSpeedEl.value) : parseInt(wordSpeedEl.value); }
 
-// ── PLAY ──
-playBtn.addEventListener('click', () => {
-  if (!playing && cues.length) {
-    playing = true;
-    held = false;
-    holdBtn.classList.remove('held');
-    tick();
-  }
-});
+playBtn.addEventListener('click', () => { if (!playing && cues.length) { playing = true; tick(); } });
 
 function tick() {
-  if (!playing || held) return;
+  if (!playing) return;
   if (unitIndex >= allUnits.length) { playing = false; updateProgress(); return; }
-
   const entry = allUnits[unitIndex];
-
   if (entry.cueIdx !== currentCue) {
     playing = false;
     timer = setTimeout(() => {
       document.querySelectorAll('.char').forEach(c => c.classList.remove('highlighted'));
-      showCue(entry.cueIdx);
-      updateNav();
-      playing = true;
-      tick();
+      showCue(entry.cueIdx); updateNav();
+      playing = true; tick();
     }, parseInt(cuePauseEl.value));
     return;
   }
-
   entry.el.classList.add('highlighted');
-  unitIndex++;
-  updateProgress();
+  unitIndex++; updateProgress();
   timer = setTimeout(tick, getSpeed());
 }
 
-// ── PAUSE ──
-pauseBtn.addEventListener('click', () => {
-  playing = false;
-  held = false;
-  holdBtn.classList.remove('held');
-  clearTimeout(timer);
-});
-
-// ── HOLD — press & hold to freeze, release to resume ──
-holdBtn.addEventListener('mousedown',  startHold);
-holdBtn.addEventListener('touchstart', startHold, { passive: true });
-holdBtn.addEventListener('mouseup',    endHold);
-holdBtn.addEventListener('mouseleave', endHold);
-holdBtn.addEventListener('touchend',   endHold);
-holdBtn.addEventListener('touchcancel',endHold);
-
-function startHold(e) {
-  if (!playing && unitIndex === 0) return; // nothing running yet
-  held = true;
-  holdBtn.classList.add('held');
-  clearTimeout(timer);
-}
-
-function endHold(e) {
-  if (!held) return;
-  held = false;
-  holdBtn.classList.remove('held');
-  // resume if was playing
-  if (playing) {
-    tick();
-  }
-}
-
-// ── RESET ──
+pauseBtn.addEventListener('click', () => { playing = false; clearTimeout(timer); });
 resetBtn.addEventListener('click', () => {
   clearTimeout(timer);
   document.querySelectorAll('.char').forEach(c => c.classList.remove('highlighted'));
-  unitIndex = 0; playing = false; held = false;
-  holdBtn.classList.remove('held');
+  unitIndex = 0; playing = false;
   if (cues.length) showCue(0);
   updateNav(); updateProgress();
 });
 
-// ── PREV / NEXT ──
 prevBtn.addEventListener('click', () => jumpToCue(Math.max(0, currentCue - 1)));
 nextBtn.addEventListener('click', () => jumpToCue(Math.min(cues.length - 1, currentCue + 1)));
 
 function jumpToCue(idx) {
-  playing = false; held = false; clearTimeout(timer);
-  holdBtn.classList.remove('held');
+  playing = false; clearTimeout(timer);
   document.querySelectorAll('.char').forEach(c => c.classList.remove('highlighted'));
   unitIndex = allUnits.findIndex(u => u.cueIdx === idx);
   if (unitIndex < 0) unitIndex = 0;
   showCue(idx); updateNav(); updateProgress();
 }
 
-// ── SCROLL on green screen to change cue ──
+// scroll
 let scrollAccum = 0;
-stage.addEventListener('wheel', (e) => {
-  e.preventDefault();
-  scrollAccum += e.deltaY;
+stage.addEventListener('wheel', e => {
+  e.preventDefault(); scrollAccum += e.deltaY;
   if (Math.abs(scrollAccum) > 60) {
-    if (scrollAccum > 0) jumpToCue(Math.min(cues.length - 1, currentCue + 1));
-    else                 jumpToCue(Math.max(0, currentCue - 1));
+    jumpToCue(scrollAccum > 0 ? Math.min(cues.length-1, currentCue+1) : Math.max(0, currentCue-1));
     scrollAccum = 0;
   }
 }, { passive: false });
 
-// touch swipe on stage
-let touchStartY = null;
-stage.addEventListener('touchstart', e => { touchStartY = e.touches[0].clientY; }, { passive: true });
-stage.addEventListener('touchend', e => {
-  if (touchStartY === null) return;
-  const diff = touchStartY - e.changedTouches[0].clientY;
-  if (Math.abs(diff) > 40) {
-    if (diff > 0) jumpToCue(Math.min(cues.length - 1, currentCue + 1));
-    else          jumpToCue(Math.max(0, currentCue - 1));
+// ── RECORD ──
+// Uses html2canvas to repeatedly snapshot the stage onto a canvas, then MediaRecorder captures that canvas stream
+recordBtn.addEventListener('click', async () => {
+  if (isRecording) {
+    // STOP
+    stopRecording();
+    return;
   }
-  touchStartY = null;
-});
 
-// ── SCREENSHOT ──
-screenshotBtn.addEventListener('click', async () => {
-  screenshotBtn.disabled = true;
-  screenshotBtn.textContent = '⏳ Capturing...';
+  // Setup canvas at 480p maintaining aspect ratio
+  const stageRect = stage.getBoundingClientRect();
+  const aspect = stageRect.width / stageRect.height;
+  const capH = 480;
+  const capW = Math.round(capH * aspect);
 
+  recCanvas.width  = capW;
+  recCanvas.height = capH;
+  const ctx = recCanvas.getContext('2d');
+
+  // Capture canvas stream at 25fps
+  let canvasStream;
   try {
-    const canvas = await html2canvas(stage, {
-      backgroundColor: '#00FF00',
-      scale: 2, // high resolution
-      useCORS: true,
-      logging: false,
-      // exclude the scroll hint text
-      ignoreElements: el => el.id === 'scroll-hint'
-    });
-
-    // flash effect
-    flashOverlay.classList.remove('flash');
-    void flashOverlay.offsetWidth;
-    flashOverlay.classList.add('flash');
-
-    // download
-    const link = document.createElement('a');
-    link.download = 'subtitle-cue-' + (currentCue + 1) + '.png';
-    link.href = canvas.toDataURL('image/png');
-    link.click();
-  } catch (err) {
-    alert('Screenshot failed: ' + err.message);
+    canvasStream = recCanvas.captureStream(25);
+  } catch(e) {
+    alert('Recording not supported in this browser. Please use Chrome.');
+    return;
   }
 
-  screenshotBtn.disabled = false;
-  screenshotBtn.textContent = '📸 Screenshot';
+  const mimeType = ['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm']
+    .find(t => MediaRecorder.isTypeSupported(t)) || 'video/webm';
+
+  recordedChunks = [];
+  try {
+    mediaRecorder = new MediaRecorder(canvasStream, { mimeType, videoBitsPerSecond: 2500000 });
+  } catch(e) {
+    mediaRecorder = new MediaRecorder(canvasStream);
+  }
+
+  mediaRecorder.ondataavailable = e => { if (e.data && e.data.size > 0) recordedChunks.push(e.data); };
+  mediaRecorder.onstop = () => {
+    clearInterval(recTimerInterval);
+    isRecording = false;
+    recordBtn.textContent = '⏺ Record';
+    recordBtn.classList.remove('recording');
+    recTimer.classList.remove('active');
+    cancelAnimationFrame(rafId);
+
+    const blob = new Blob(recordedChunks, { type: mimeType });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = 'green-screen-lyrics.webm';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  };
+
+  isRecording = true;
+  mediaRecorder.start(200);
+
+  // rAF loop: use html2canvas each frame to paint stage → recCanvas
+  let rafId;
+  let lastCapture = 0;
+  const frameInterval = 1000 / 25; // 25fps
+
+  async function captureFrame(ts) {
+    if (!isRecording) return;
+    rafId = requestAnimationFrame(captureFrame);
+    if (ts - lastCapture < frameInterval) return;
+    lastCapture = ts;
+
+    try {
+      const tmpCanvas = await html2canvas(stage, {
+        backgroundColor: '#00FF00',
+        scale: capW / stageRect.width,
+        width: stageRect.width,
+        height: stageRect.height,
+        useCORS: true,
+        logging: false
+      });
+      ctx.drawImage(tmpCanvas, 0, 0, capW, capH);
+    } catch(e) { /* skip frame */ }
+  }
+  rafId = requestAnimationFrame(captureFrame);
+
+  // Timer display
+  recStartTime = Date.now();
+  recTimerInterval = setInterval(() => {
+    const s = Math.floor((Date.now() - recStartTime) / 1000);
+    const mm = String(Math.floor(s/60)).padStart(2,'0');
+    const ss = String(s % 60).padStart(2,'0');
+    recTimer.textContent = mm + ':' + ss;
+  }, 1000);
+
+  recordBtn.textContent = '⏹ Stop & Save';
+  recordBtn.classList.add('recording');
+  recTimer.classList.add('active');
+  recTimer.textContent = '00:00';
 });
 
-// ── SPACEBAR = play/pause ──
+function stopRecording() {
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.stop();
+  }
+}
+
+// spacebar
 document.addEventListener('keydown', e => {
   if (e.code === 'Space' && document.activeElement.tagName !== 'TEXTAREA') {
     e.preventDefault();
@@ -488,7 +407,7 @@ document.addEventListener('keydown', e => {
 });
 
 function updateNav() {
-  cueInfo.textContent = cues.length ? 'Cue ' + (currentCue + 1) + ' / ' + cues.length : 'Load lyrics to begin';
+  cueInfo.textContent = cues.length ? 'Cue ' + (currentCue+1) + ' / ' + cues.length : 'Load lyrics to begin';
 }
 function updateProgress() {
   progressBar.style.width = (allUnits.length ? unitIndex / allUnits.length * 100 : 0) + '%';
