@@ -6,51 +6,105 @@
 <title>Lyric Subtitle Tool</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Segoe UI', sans-serif; background: #1a1a2e; color: #eee; min-height: 100vh; }
-  #editor { padding: 20px 24px; background: #16213e; border-bottom: 2px solid #0f3460; }
-  #editor h1 { font-size: 1.3rem; color: #e94560; margin-bottom: 14px; letter-spacing: 1px; }
-  label { font-size: 0.72rem; color: #aaa; display: block; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
-  textarea { width: 100%; height: 110px; background: #0f3460; border: 1px solid #e94560; border-radius: 6px; color: #fff; padding: 10px; font-size: 0.93rem; resize: vertical; outline: none; margin-bottom: 14px; }
+  body { font-family: 'Segoe UI', sans-serif; background: #1a1a2e; color: #eee; overflow-x: hidden; }
+
+  /* ── EDITOR ── */
+  #editor { padding: 10px 16px; background: #16213e; border-bottom: 2px solid #0f3460; }
+  #editor h1 { font-size: 1rem; color: #e94560; margin-bottom: 8px; letter-spacing: 1px; }
+  label { font-size: 0.68rem; color: #aaa; display: block; margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.4px; }
+  textarea { width: 100%; height: 72px; background: #0f3460; border: 1px solid #e94560; border-radius: 5px; color: #fff; padding: 7px 10px; font-size: 0.85rem; resize: vertical; outline: none; margin-bottom: 8px; }
   textarea::placeholder { color: #555; }
-  .controls-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 14px; }
-  .ctrl-group { display: flex; flex-direction: column; gap: 5px; }
-  .slider-row { display: flex; align-items: center; gap: 8px; }
+
+  .controls-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; margin-bottom: 8px; }
+  .ctrl-group { display: flex; flex-direction: column; gap: 3px; }
+  .slider-row { display: flex; align-items: center; gap: 6px; }
   input[type=range] { flex: 1; accent-color: #e94560; }
-  .val-label { font-size: 0.82rem; color: #e94560; font-weight: 700; min-width: 56px; text-align: right; }
-  select { background: #0f3460; color: #fff; border: 1px solid #444; border-radius: 4px; padding: 6px 10px; font-size: 0.88rem; outline: none; cursor: pointer; }
-  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
-  button { background: #e94560; color: #fff; border: none; border-radius: 6px; padding: 9px 18px; font-size: 0.9rem; font-weight: 700; cursor: pointer; letter-spacing: 0.4px; transition: background 0.15s; }
+  .val-label { font-size: 0.76rem; color: #e94560; font-weight: 700; min-width: 54px; text-align: right; }
+  select { background: #0f3460; color: #fff; border: 1px solid #444; border-radius: 4px; padding: 5px 8px; font-size: 0.82rem; outline: none; cursor: pointer; width: 100%; }
+
+  .btn-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  button { background: #e94560; color: #fff; border: none; border-radius: 5px; padding: 7px 14px; font-size: 0.82rem; font-weight: 700; cursor: pointer; transition: background 0.15s; }
   button:hover { background: #c73652; }
   button:disabled { opacity: 0.35; cursor: not-allowed; }
   button.sec { background: #0f3460; border: 1px solid #e94560; }
   button.sec:hover:not(:disabled) { background: #1a4a80; }
-  #cue-info { font-size: 0.82rem; color: #888; margin-left: 6px; }
-  #preview-label { text-align: center; padding: 5px; font-size: 0.72rem; color: #555; background: #111; text-transform: uppercase; letter-spacing: 1px; }
-  #progress-bar-wrap { background: #111; height: 4px; width: 100%; }
-  #progress-bar { height: 100%; background: #e94560; width: 0%; transition: width 0.15s linear; }
-  #stage { background: #00FF00; width: 100%; aspect-ratio: 16 / 9; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 7%; position: relative; overflow: hidden; }
-  #subtitle-block { text-align: center; width: 100%; padding: 0 3%; }
-  .cue-block { display: none; line-height: 1.2; }
+  #cue-info { font-size: 0.78rem; color: #888; margin-left: 4px; }
+
+  #progress-bar-wrap { background: #000; height: 3px; }
+  #progress-bar { height: 100%; background: #e94560; width: 0%; transition: width 0.1s linear; }
+
+  /* ── STAGE — fills remaining viewport height ── */
+  #stage {
+    background: #00FF00;
+    width: 100vw;
+    /* fill remaining space after editor */
+    height: calc(100vh - var(--editor-h, 200px));
+    display: flex;
+    align-items: center;       /* vertically center the text block */
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+
+  #subtitle-block {
+    text-align: center;
+    width: 92%;
+    padding: 0;
+  }
+
+  .cue-block { display: none; line-height: 1.25; }
   .sub-line { display: block; }
-  .word { display: inline-block; font-family: 'Arial Black', 'Arial', sans-serif; font-weight: 900; text-transform: uppercase; color: #ffffff; text-shadow: 2px 2px 0 #000, -2px 2px 0 #000, 2px -2px 0 #000, -2px -2px 0 #000, 0 4px 10px rgba(0,0,0,0.85); margin: 0 0.1em; transition: color 0.06s ease; }
-  .word.highlighted { color: #FFE600; }
+
+  /* each character is a span */
+  .char {
+    display: inline;
+    font-family: 'Arial Black', 'Arial', sans-serif;
+    font-weight: 900;
+    text-transform: uppercase;
+    color: #ffffff;
+    text-shadow:
+      2px  2px 0 #000,
+      -2px  2px 0 #000,
+       2px -2px 0 #000,
+      -2px -2px 0 #000,
+       0    3px 8px rgba(0,0,0,0.9);
+    transition: color 0.05s ease;
+  }
+  .char.highlighted { color: #FFE600; }
+  .char.space { display: inline; }
 </style>
 </head>
 <body>
+
 <div id="editor">
   <h1>🎵 Lyric Subtitle Tool</h1>
-  <label>Paste Full Lyrics — auto-splits into cues</label>
+  <label>Paste Lyrics</label>
   <textarea id="lyrics-input" placeholder="AAKE RAAS RACHA JAA&#10;AAKE RAAS RACHA JAA&#10;MURLIWALE BANSIWALE&#10;AAKE RAAS RACHA JAA"></textarea>
+
   <div class="controls-grid">
     <div class="ctrl-group">
-      <label>Word Speed <span style="color:#555">(ms per word highlight)</span></label>
+      <label>Highlight Mode</label>
+      <select id="mode">
+        <option value="word">Word by Word</option>
+        <option value="char">Character by Character</option>
+      </select>
+    </div>
+    <div class="ctrl-group">
+      <label id="speed-label">Word Speed</label>
       <div class="slider-row">
         <input type="range" id="word-speed" min="80" max="1500" value="380" step="20">
         <span class="val-label" id="word-speed-val">380 ms</span>
       </div>
     </div>
     <div class="ctrl-group">
-      <label>Cue Pause <span style="color:#555">(hold after each cue)</span></label>
+      <label>Char Speed <span style="color:#555;font-size:0.65rem;">(char mode)</span></label>
+      <div class="slider-row">
+        <input type="range" id="char-speed" min="20" max="800" value="120" step="10">
+        <span class="val-label" id="char-speed-val">120 ms</span>
+      </div>
+    </div>
+    <div class="ctrl-group">
+      <label>Cue Pause</label>
       <div class="slider-row">
         <input type="range" id="cue-pause" min="0" max="4000" value="1200" step="100">
         <span class="val-label" id="cue-pause-val">1200 ms</span>
@@ -59,21 +113,22 @@
     <div class="ctrl-group">
       <label>Font Size</label>
       <div class="slider-row">
-        <input type="range" id="font-size" min="2" max="9" value="5" step="0.25">
-        <span class="val-label" id="font-size-val">5 vw</span>
+        <input type="range" id="font-size" min="2" max="10" value="5.5" step="0.25">
+        <span class="val-label" id="font-size-val">5.5 vw</span>
       </div>
     </div>
     <div class="ctrl-group">
       <label>Lines per Cue</label>
       <select id="lines-per-cue">
-        <option value="1">1 line per cue</option>
-        <option value="2" selected>2 lines per cue</option>
-        <option value="3">3 lines per cue</option>
+        <option value="1">1 line</option>
+        <option value="2" selected>2 lines</option>
+        <option value="3">3 lines</option>
       </select>
     </div>
   </div>
+
   <div class="btn-row">
-    <button id="load-btn">⬆ Load Lyrics</button>
+    <button id="load-btn">⬆ Load</button>
     <button class="sec" id="play-btn" disabled>▶ Play</button>
     <button class="sec" id="pause-btn" disabled>⏸ Pause</button>
     <button class="sec" id="reset-btn" disabled>⏹ Reset</button>
@@ -82,17 +137,32 @@
     <span id="cue-info">Load lyrics to begin</span>
   </div>
 </div>
+
 <div id="progress-bar-wrap"><div id="progress-bar"></div></div>
-<div id="preview-label">🟩 Green Screen — 16:9 — Chroma Key Ready</div>
+
 <div id="stage">
   <div id="subtitle-block">
-    <span class="word" style="font-size:4vw;color:#009900;">PASTE LYRICS &amp; CLICK LOAD</span>
+    <span class="char" style="font-size:4vw;color:#009900;">PASTE LYRICS &amp; CLICK LOAD</span>
   </div>
 </div>
+
 <script>
+// measure editor height and set CSS var so stage fills the rest
+function setStageHeight() {
+  const editorH = document.getElementById('editor').offsetHeight +
+                  document.getElementById('progress-bar-wrap').offsetHeight;
+  document.getElementById('stage').style.height = (window.innerHeight - editorH) + 'px';
+}
+window.addEventListener('resize', setStageHeight);
+setStageHeight();
+
+// ── DOM refs ──
 const lyricsInput  = document.getElementById('lyrics-input');
+const modeEl       = document.getElementById('mode');
 const wordSpeedEl  = document.getElementById('word-speed');
 const wordSpeedVal = document.getElementById('word-speed-val');
+const charSpeedEl  = document.getElementById('char-speed');
+const charSpeedVal = document.getElementById('char-speed-val');
 const cuePauseEl   = document.getElementById('cue-pause');
 const cuePauseVal  = document.getElementById('cue-pause-val');
 const fontSizeEl   = document.getElementById('font-size');
@@ -108,15 +178,19 @@ const cueInfo      = document.getElementById('cue-info');
 const block        = document.getElementById('subtitle-block');
 const progressBar  = document.getElementById('progress-bar');
 
-let cues = [], allWords = [], wordIndex = 0, currentCue = 0, playing = false, timer = null;
+// ── State ──
+let cues = [], allUnits = [], unitIndex = 0, currentCue = 0, playing = false, timer = null;
 
+// ── Slider listeners ──
 wordSpeedEl.addEventListener('input', () => wordSpeedVal.textContent = wordSpeedEl.value + ' ms');
+charSpeedEl.addEventListener('input', () => charSpeedVal.textContent = charSpeedEl.value + ' ms');
 cuePauseEl.addEventListener('input',  () => cuePauseVal.textContent  = cuePauseEl.value  + ' ms');
 fontSizeEl.addEventListener('input',  () => {
   fontSizeVal.textContent = fontSizeEl.value + ' vw';
-  document.querySelectorAll('.word').forEach(w => w.style.fontSize = fontSizeEl.value + 'vw');
+  document.querySelectorAll('.char').forEach(c => c.style.fontSize = fontSizeEl.value + 'vw');
 });
 
+// ── LOAD ──
 loadBtn.addEventListener('click', () => {
   const raw = lyricsInput.value.trim();
   if (!raw) return;
@@ -128,88 +202,129 @@ loadBtn.addEventListener('click', () => {
   resetState();
   [playBtn, pauseBtn, resetBtn, prevBtn, nextBtn].forEach(b => b.disabled = false);
   updateNav();
+  setStageHeight();
 });
 
+// ── BUILD DOM ──
+// allUnits: each unit is {el, cueIdx} — a word span OR a char span depending on mode
 function buildDOM() {
   block.innerHTML = '';
-  allWords = [];
+  allUnits = [];
   const fs = fontSizeEl.value + 'vw';
+  const mode = modeEl.value;
+
   cues.forEach((lines, cIdx) => {
     const cueDiv = document.createElement('div');
     cueDiv.className = 'cue-block';
+
     lines.forEach((line, lIdx) => {
       const lineSpan = document.createElement('span');
       lineSpan.className = 'sub-line';
-      line.split(/\s+/).forEach(word => {
-        const span = document.createElement('span');
-        span.className = 'word';
-        span.textContent = word;
-        span.style.fontSize = fs;
-        lineSpan.appendChild(span);
-        allWords.push({ el: span, cueIdx: cIdx });
-      });
+
+      if (mode === 'word') {
+        line.split(/\s+/).forEach((word, wi) => {
+          if (wi > 0) {
+            const sp = document.createElement('span');
+            sp.className = 'char space';
+            sp.textContent = ' ';
+            sp.style.fontSize = fs;
+            lineSpan.appendChild(sp);
+          }
+          const span = document.createElement('span');
+          span.className = 'char';
+          span.textContent = word;
+          span.style.fontSize = fs;
+          lineSpan.appendChild(span);
+          allUnits.push({ el: span, cueIdx: cIdx });
+        });
+      } else {
+        // char by char — space chars are skipped from highlighting but rendered
+        for (let ci = 0; ci < line.length; ci++) {
+          const ch = line[ci];
+          const span = document.createElement('span');
+          span.className = ch === ' ' ? 'char space' : 'char';
+          span.textContent = ch;
+          span.style.fontSize = fs;
+          lineSpan.appendChild(span);
+          if (ch !== ' ') {
+            allUnits.push({ el: span, cueIdx: cIdx });
+          }
+        }
+      }
+
       cueDiv.appendChild(lineSpan);
       if (lIdx < lines.length - 1) cueDiv.appendChild(document.createElement('br'));
     });
+
     block.appendChild(cueDiv);
   });
+
   showCue(0);
 }
 
 function showCue(idx) {
-  document.querySelectorAll('.cue-block').forEach((el, i) => el.style.display = (i === idx) ? 'block' : 'none');
+  document.querySelectorAll('.cue-block').forEach((el, i) => el.style.display = i === idx ? 'block' : 'none');
   currentCue = idx;
 }
 
 function resetState() {
-  playing = false; clearTimeout(timer); wordIndex = 0;
-  document.querySelectorAll('.word').forEach(w => w.classList.remove('highlighted'));
+  playing = false; clearTimeout(timer); unitIndex = 0;
+  document.querySelectorAll('.char').forEach(c => c.classList.remove('highlighted'));
   if (cues.length) showCue(0);
   updateProgress();
 }
 
+// ── PLAY ──
 playBtn.addEventListener('click', () => { if (!playing && cues.length) { playing = true; tick(); } });
+
+function getSpeed() {
+  return modeEl.value === 'char' ? parseInt(charSpeedEl.value) : parseInt(wordSpeedEl.value);
+}
 
 function tick() {
   if (!playing) return;
-  if (wordIndex >= allWords.length) { playing = false; updateProgress(); return; }
-  const entry = allWords[wordIndex];
+  if (unitIndex >= allUnits.length) { playing = false; updateProgress(); return; }
+
+  const entry = allUnits[unitIndex];
+
+  // cue boundary — pause then switch
   if (entry.cueIdx !== currentCue) {
-    const pause = parseInt(cuePauseEl.value);
     playing = false;
     timer = setTimeout(() => {
-      document.querySelectorAll('.word').forEach(w => w.classList.remove('highlighted'));
+      document.querySelectorAll('.char').forEach(c => c.classList.remove('highlighted'));
       showCue(entry.cueIdx);
       updateNav();
       playing = true;
       tick();
-    }, pause);
+    }, parseInt(cuePauseEl.value));
     return;
   }
+
   entry.el.classList.add('highlighted');
-  wordIndex++;
+  unitIndex++;
   updateProgress();
-  timer = setTimeout(tick, parseInt(wordSpeedEl.value));
+  timer = setTimeout(tick, getSpeed());
 }
 
+// ── PAUSE / RESET ──
 pauseBtn.addEventListener('click', () => { playing = false; clearTimeout(timer); });
-
 resetBtn.addEventListener('click', () => {
   clearTimeout(timer);
-  document.querySelectorAll('.word').forEach(w => w.classList.remove('highlighted'));
-  wordIndex = 0; playing = false;
+  document.querySelectorAll('.char').forEach(c => c.classList.remove('highlighted'));
+  unitIndex = 0; playing = false;
   if (cues.length) showCue(0);
   updateNav(); updateProgress();
 });
 
+// ── PREV / NEXT ──
 prevBtn.addEventListener('click', () => jumpToCue(Math.max(0, currentCue - 1)));
 nextBtn.addEventListener('click', () => jumpToCue(Math.min(cues.length - 1, currentCue + 1)));
 
 function jumpToCue(idx) {
   playing = false; clearTimeout(timer);
-  document.querySelectorAll('.word').forEach(w => w.classList.remove('highlighted'));
-  wordIndex = allWords.findIndex(w => w.cueIdx === idx);
-  if (wordIndex < 0) wordIndex = 0;
+  document.querySelectorAll('.char').forEach(c => c.classList.remove('highlighted'));
+  unitIndex = allUnits.findIndex(u => u.cueIdx === idx);
+  if (unitIndex < 0) unitIndex = 0;
   showCue(idx); updateNav(); updateProgress();
 }
 
@@ -217,8 +332,17 @@ function updateNav() {
   cueInfo.textContent = cues.length ? 'Cue ' + (currentCue + 1) + ' / ' + cues.length : 'Load lyrics to begin';
 }
 function updateProgress() {
-  progressBar.style.width = (allWords.length ? (wordIndex / allWords.length * 100) : 0) + '%';
+  progressBar.style.width = (allUnits.length ? unitIndex / allUnits.length * 100 : 0) + '%';
 }
+
+// spacebar = play/pause
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' && document.activeElement.tagName !== 'TEXTAREA') {
+    e.preventDefault();
+    if (playing) { playing = false; clearTimeout(timer); }
+    else if (cues.length) { playing = true; tick(); }
+  }
+});
 </script>
 </body>
 </html>
