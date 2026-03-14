@@ -532,12 +532,12 @@ seekBar.addEventListener('input', () => {
 function seekTo(t) {
   if (!audioEl || !isFinite(t)) return;
   audioEl.currentTime = t;
-  // reset highlight state for new position
+  audioStartedAt = performance.now();
+  audioStartOffset = t;
   clearHL();
   unitIdx = 0;
   hideCue();
   activeCueIdx = -1;
-  // let the RAF loop pick up from new position
 }
 
 function fmt(s) {
@@ -546,9 +546,10 @@ function fmt(s) {
   return m+':'+String(sec).padStart(2,'0');
 }
 
-function updateSeekBar() {
+function updateSeekBar(t) {
   if (!audioEl || seekDragging) return;
-  const t = audioEl.currentTime, d = audioEl.duration||0;
+  if (t === undefined) t = audioEl.currentTime;
+  const d = audioEl.duration||0;
   seekBar.max = d;
   seekBar.value = t;
   // gradient fill
@@ -560,10 +561,24 @@ function updateSeekBar() {
 // ══════════════════════════════════════════
 // MAIN RAF LOOP — drives everything from audio.currentTime
 // ══════════════════════════════════════════
+// We track the exact performance.now() when audio started
+// so highlight timing uses wall-clock, not setTimeout drift
+let audioStartedAt = 0;   // performance.now() when audio.play() was called
+let audioStartOffset = 0; // audio.currentTime at that moment
+
+function getAudioTime() {
+  if (!audioEl) return 0;
+  // Use performance.now() for sub-millisecond accuracy instead of audioEl.currentTime
+  // which only updates ~4x per second in some browsers
+  if (!isPlaying) return audioEl.currentTime;
+  const elapsed = (performance.now() - audioStartedAt) / 1000;
+  return audioStartOffset + elapsed;
+}
+
 function rafLoop() {
   if (!isPlaying) return;
-  const t = audioEl.currentTime;
-  updateSeekBar();
+  const t = getAudioTime();
+  updateSeekBar(t);
 
   // find which cue should be active
   let wantCue = -1;
@@ -583,12 +598,11 @@ function rafLoop() {
       unitIdx = 0;
     } else {
       showCue(wantCue);
-      // find first unit of this cue
       unitIdx = stageUnits.findIndex(u => u.cueIdx === wantCue);
       if (unitIdx < 0) unitIdx = 0;
-      // start highlight ticker
+      hlNextAt = performance.now(); // start immediately, no delay
       clearTimeout(hlTimer);
-      hlTimer = setTimeout(hlTick, 0);
+      scheduleNextHl();
     }
   }
 
@@ -596,21 +610,32 @@ function rafLoop() {
 }
 
 // ══════════════════════════════════════════
-// HIGHLIGHT TICKER — fully independent setTimeout
+// HIGHLIGHT TICKER — drift-free scheduling
+// Uses performance.now() to compensate for any setTimeout drift
 // ══════════════════════════════════════════
+let hlNextAt = 0; // performance.now() when next highlight should fire
+
+function scheduleNextHl() {
+  const now = performance.now();
+  const delay = Math.max(0, hlNextAt - now);
+  hlTimer = setTimeout(hlTick, delay);
+}
+
 function hlTick() {
   if (!isPlaying) return;
   if (unitIdx >= stageUnits.length) return;
   const u = stageUnits[unitIdx];
-  if (u.cueIdx !== activeCueIdx) return; // cue changed — stop this ticker
+  if (u.cueIdx !== activeCueIdx) return;
   u.el.classList.add('hl');
-  drawCanvas(); // paint immediately on each highlight
+  drawCanvas();
   unitIdx++;
+  // schedule next: advance hlNextAt by exact speed (no accumulation of drift)
   const mode = document.getElementById('r-mode').value;
   const spd = mode==='char'
     ? parseInt(document.getElementById('r-csp').value)
     : parseInt(document.getElementById('r-wsp').value);
-  hlTimer = setTimeout(hlTick, spd);
+  hlNextAt += spd;
+  scheduleNextHl();
 }
 
 // ══════════════════════════════════════════
@@ -627,12 +652,20 @@ function startPlayback() {
   audioEl = document.getElementById('audio-rec');
   audioEl.src = audioSrc;
   audioEl.currentTime = seekDragging ? parseFloat(seekBar.value) : audioEl.currentTime || 0;
-  audioEl.play();
+  audioEl.play().then(() => {
+    // Record exact moment audio started for drift-free timing
+    audioStartedAt = performance.now();
+    audioStartOffset = audioEl.currentTime;
+  }).catch(() => {
+    audioStartedAt = performance.now();
+    audioStartOffset = 0;
+  });
   audioEl.onended = () => stopPlayback();
 
   isPlaying = true;
   hideCue(); clearHL();
   unitIdx = 0; activeCueIdx = -1;
+  hlNextAt = performance.now();
   rafId = requestAnimationFrame(rafLoop);
 }
 
@@ -756,11 +789,23 @@ document.getElementById('r-record').addEventListener('click', async () => {
   };
 
   isRecording = true;
-  mediaRecorder.start(100); // collect chunks every 100ms
+  mediaRecorder.start(100);
   startCanvasLoop();
 
-  // also start playback
-  startPlayback();
+  // Start audio directly (stage already built, don't rebuild)
+  if (!audioEl) audioEl = document.getElementById('audio-rec');
+  audioEl.src = audioSrc;
+  audioEl.currentTime = 0;
+  audioEl.play().then(() => {
+    audioStartedAt = performance.now();
+    audioStartOffset = audioEl.currentTime;
+  });
+  audioEl.onended = () => stopRecording();
+  isPlaying = true;
+  hideCue(); clearHL();
+  unitIdx = 0; activeCueIdx = -1;
+  hlNextAt = performance.now();
+  rafId = requestAnimationFrame(rafLoop);
 
   const btn = document.getElementById('r-record');
   btn.textContent='⏹ Stop & Save'; btn.classList.add('rec');
