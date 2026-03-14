@@ -57,7 +57,7 @@
 <div id="editor">
   <h1>🎵 Lyric Subtitle Tool</h1>
   <label>Paste Lyrics</label>
-  <textarea id="lyrics-input" placeholder="AAKE RAAS RACHA JAA&#10;AAKE RAAS RACHA JAA&#10;MURLIWALE BANSIWALE&#10;AAKE RAAS RACHA JAA"></textarea>
+  <textarea id="lyrics-input" placeholder="SATGURU TERE CHARNON KI&#10;SATGURU TERE CHARNON KI&#10;&#10;AGAR DHOOL JO MIL JAAE&#10;&#10;SATGURU TERE CHARNON KI&#10;SATGURU TERE CHARNON KI&#10;&#10;Blank line = new cue"></textarea>
   <div class="controls-grid">
     <div class="ctrl-group">
       <label>Highlight Mode</label>
@@ -91,12 +91,7 @@
         <span class="val-label" id="font-size-val">5.5 vw</span>
       </div>
     </div>
-    <div class="ctrl-group">
-      <label>Lines per Cue</label>
-      <select id="lines-per-cue">
-        <option value="1">1 line</option><option value="2" selected>2 lines</option><option value="3">3 lines</option>
-      </select>
-    </div>
+
   </div>
   <div class="btn-row">
     <button id="load-btn">⬆ Load</button>
@@ -185,10 +180,19 @@ fontSizeEl.addEventListener('input',  () => {
 loadBtn.addEventListener('click', () => {
   const raw = lyricsInput.value.trim();
   if (!raw) return;
-  const lines = raw.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-  const n = parseInt(linesPerCue.value);
+  // Split into cues by blank lines — each group of non-empty lines = one cue
   cues = [];
-  for (let i = 0; i < lines.length; i += n) cues.push(lines.slice(i, i + n));
+  let current = [];
+  raw.split('\n').forEach(line => {
+    const t = line.trim();
+    if (t === '') {
+      if (current.length) { cues.push(current); current = []; }
+    } else {
+      current.push(t);
+    }
+  });
+  if (current.length) cues.push(current);
+  if (!cues.length) return;
   buildDOM();
   resetState();
   [playpauseBtn, resetBtn, prevBtn, nextBtn, recordBtn].forEach(b => b.disabled = false);
