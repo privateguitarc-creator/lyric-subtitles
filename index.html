@@ -161,6 +161,10 @@ canvas { display:none; }
       <input type="range" id="seek-bar" min="0" max="100" value="0" step="0.1">
       <span id="time-label">0.0s / 0.0s</span>
     </div>
+    <!-- Per-line speed panel -->
+  <div id="line-speeds-panel" style="background:#0a0a1a;border-top:1px solid #0f3460;padding:6px 14px;max-height:160px;overflow-y:auto;display:none;">
+    <div style="font-size:0.68rem;color:#666;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.4px;">⚡ Highlight Speed per Line — drag to set how fast yellow moves on each line</div>
+    <div id="line-speeds-list"></div>
   </div>
 </div>
 
@@ -212,6 +216,7 @@ document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () =>
     finalizeCues();
     syncControlsToRecord();
     buildStage();
+    buildLineSpeeds();
   }
   // going back to sync tab: re-render timing list with current data intact
   if (name === 'sync' && cues.length > 0) {
@@ -380,92 +385,22 @@ function mmssToSecs(str) {
 function renderTimingList() {
   const list = document.getElementById('timing-list');
   list.innerHTML = '';
-  const defaultWsp = parseInt(document.getElementById('s-wsp').value);
-  const defaultCsp = parseInt(document.getElementById('s-csp').value);
-
   cues.forEach((cue, i) => {
-    // ensure lineSpeeds exists and is right length
-    if (!cue.lineSpeeds) cue.lineSpeeds = [];
-    while (cue.lineSpeeds.length < cue.lines.length) cue.lineSpeeds.push(null);
-
-    // Header row: cue number + start time + delete
-    const header = document.createElement('div');
-    header.className = 'tr';
-    header.style.cssText = 'background:#0a0a20;padding:4px 4px 2px;border-radius:4px 4px 0 0;margin-top:6px;border-bottom:none;';
-    header.innerHTML = `
-      <span class="ti" style="color:#e94560;font-weight:700;">#${i+1}</span>
-      <span class="tt"><input type="text" value="${secsToMmss(cue.startTime)}" placeholder="m:ss" data-i="${i}" class="time-inp" style="width:62px;font-size:0.76rem;" title="m:ss or seconds"></span>
-      <span style="color:#aaa;font-size:0.72rem;flex:1;padding-left:6px;">${cue.lines.length > 1 ? cue.lines.length+' lines' : cue.lines[0].substring(0,40)}</span>
-      <span class="td" data-i="${i}" title="Clear timing">✕</span>`;
-    list.appendChild(header);
-
-    // Per-line rows
-    cue.lines.forEach((line, li) => {
-      const lineRow = document.createElement('div');
-      lineRow.className = 'tr';
-      lineRow.style.cssText = 'background:#080818;padding:3px 4px;border-radius:0;margin-top:0;border-top:1px solid #111;';
-      const spd = cue.lineSpeeds[li];
-      const spdVal = spd !== null ? spd : '';
-      const curSpd = spd || defaultWsp;
-      const speedLabel = curSpd <= 80 ? '⚡ Very Fast' : curSpd <= 160 ? '🔥 Fast' : curSpd <= 300 ? '▶ Normal' : curSpd <= 600 ? '🐢 Slow' : '🐌 Very Slow';
-      lineRow.innerHTML = `
-        <div style="width:100%;padding:3px 6px 4px 14px;">
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">
-            <span style="font-size:0.68rem;color:#555;font-weight:700;flex-shrink:0;">LINE ${li+1}</span>
-            <span style="font-size:0.74rem;color:#bbb;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">${line}</span>
-          </div>
-          <div style="display:flex;align-items:center;gap:8px;">
-            <span style="font-size:0.65rem;color:#666;white-space:nowrap;">Highlight Speed →</span>
-            <span style="font-size:0.68rem;color:#2ecc71;font-weight:700;min-width:80px;">${speedLabel}</span>
-            <input type="range" min="40" max="1200" value="${curSpd}" step="10"
-              style="flex:1;accent-color:#e94560;max-width:140px;"
-              data-ci="${i}" data-li="${li}" class="spd-slider">
-            <span class="spd-val" style="font-size:0.74rem;color:#e94560;font-weight:700;min-width:42px;text-align:right;">${curSpd}ms</span>
-            <button class="spd-reset sec" data-ci="${i}" data-li="${li}"
-              style="font-size:0.62rem;padding:2px 6px;border-radius:3px;flex-shrink:0;" title="Reset to global default">↺</button>
-          </div>
-        </div>`;
-      list.appendChild(lineRow);
-    });
-
-    // bottom border
-    const gap = document.createElement('div');
-    gap.style.cssText = 'height:3px;background:#0d0d1a;';
-    list.appendChild(gap);
+    const row = document.createElement('div');
+    row.className = 'tr';
+    row.innerHTML = `<span class="ti">#${i+1}</span>
+      <span class="tt"><input type="text" value="${secsToMmss(cue.startTime)}" placeholder="m:ss" data-i="${i}" style="width:62px;font-size:0.76rem;" title="Enter as m:ss (e.g. 1:23.5) or seconds"></span>
+      <span class="tx">${cue.lines.join(' | ')}</span>
+      <span class="td" data-i="${i}">✕</span>`;
+    list.appendChild(row);
   });
-
-  // time input listeners
-  list.querySelectorAll('.time-inp').forEach(inp => inp.addEventListener('change', e => {
+  list.querySelectorAll('input').forEach(inp => inp.addEventListener('change', e => {
     const i = +e.target.dataset.i;
     cues[i].startTime = mmssToSecs(e.target.value);
     e.target.value = secsToMmss(cues[i].startTime);
   }));
-
-  // delete listeners
   list.querySelectorAll('.td').forEach(btn => btn.addEventListener('click', e => {
     cues[+e.target.dataset.i].startTime = null; renderTimingList();
-  }));
-
-  // speed slider listeners
-  list.querySelectorAll('.spd-slider').forEach(sl => {
-    const valEl = sl.nextElementSibling;
-    const labelEl = sl.previousElementSibling; // the speed label span
-    sl.addEventListener('input', e => {
-      const ci = +e.target.dataset.ci, li = +e.target.dataset.li;
-      const v = parseInt(e.target.value);
-      cues[ci].lineSpeeds[li] = v;
-      valEl.textContent = v + 'ms';
-      // update label
-      const lbl = v <= 80 ? '⚡ Very Fast' : v <= 160 ? '🔥 Fast' : v <= 300 ? '▶ Normal' : v <= 600 ? '🐢 Slow' : '🐌 Very Slow';
-      if (labelEl && labelEl.classList && labelEl.style.color === 'rgb(46, 204, 113)') labelEl.textContent = lbl;
-    });
-  });
-
-  // reset speed listeners
-  list.querySelectorAll('.spd-reset').forEach(btn => btn.addEventListener('click', e => {
-    const ci = +e.target.dataset.ci, li = +e.target.dataset.li;
-    cues[ci].lineSpeeds[li] = null;
-    renderTimingList();
   }));
 }
 
@@ -477,8 +412,8 @@ document.getElementById('sync-go').addEventListener('click', () => {
   finalizeCues();
   syncControlsToRecord();
   buildStage();
+  buildLineSpeeds();
   goTab('record');
-  // auto-start preview so they see it immediately
   setTimeout(startPlayback, 200);
 });
 document.getElementById('sync-back').addEventListener('click', () => goTab('setup'));
@@ -506,6 +441,91 @@ function syncControlsToRecord() {
     if (fe && te) te.value = fe.value;
   });
   updateRecLabels();
+  buildLineSpeeds();
+}
+
+function buildLineSpeeds() {
+  const panel = document.getElementById('line-speeds-panel');
+  const list  = document.getElementById('line-speeds-list');
+  if (!cues.length) { panel.style.display='none'; return; }
+  panel.style.display = 'block';
+  list.innerHTML = '';
+
+  const defaultSpd = parseInt(document.getElementById('r-wsp').value) || 350;
+
+  cues.forEach((cue, ci) => {
+    if (!cue.lineSpeeds) cue.lineSpeeds = [];
+    while (cue.lineSpeeds.length < cue.lines.length) cue.lineSpeeds.push(null);
+
+    cue.lines.forEach((line, li) => {
+      const spd = cue.lineSpeeds[li] !== null ? cue.lineSpeeds[li] : defaultSpd;
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid #111;';
+
+      // cue+line label
+      const lbl = document.createElement('span');
+      lbl.style.cssText = 'font-size:0.68rem;color:#555;min-width:52px;flex-shrink:0;';
+      lbl.textContent = 'C'+(ci+1)+' L'+(li+1);
+      row.appendChild(lbl);
+
+      // lyric text
+      const txt = document.createElement('span');
+      txt.style.cssText = 'font-size:0.74rem;color:#aaa;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+      txt.textContent = line;
+      row.appendChild(txt);
+
+      // speed label (fast/slow)
+      const speedLbl = document.createElement('span');
+      speedLbl.style.cssText = 'font-size:0.7rem;color:#2ecc71;font-weight:700;min-width:78px;text-align:right;flex-shrink:0;';
+      speedLbl.textContent = getSpeedLabel(spd);
+      row.appendChild(speedLbl);
+
+      // slider
+      const slider = document.createElement('input');
+      slider.type = 'range'; slider.min = 40; slider.max = 1200;
+      slider.value = spd; slider.step = 10;
+      slider.style.cssText = 'width:130px;flex-shrink:0;accent-color:#e94560;';
+
+      // ms value
+      const msLbl = document.createElement('span');
+      msLbl.style.cssText = 'font-size:0.74rem;color:#e94560;font-weight:700;min-width:42px;text-align:right;flex-shrink:0;';
+      msLbl.textContent = spd+'ms';
+
+      // reset btn
+      const resetBtn = document.createElement('button');
+      resetBtn.className = 'sec';
+      resetBtn.textContent = '↺';
+      resetBtn.title = 'Reset to global default';
+      resetBtn.style.cssText = 'font-size:0.62rem;padding:2px 6px;flex-shrink:0;';
+
+      slider.addEventListener('input', () => {
+        const v = parseInt(slider.value);
+        cue.lineSpeeds[li] = v;
+        msLbl.textContent = v+'ms';
+        speedLbl.textContent = getSpeedLabel(v);
+      });
+      resetBtn.addEventListener('click', () => {
+        cue.lineSpeeds[li] = null;
+        const def = parseInt(document.getElementById('r-wsp').value)||350;
+        slider.value = def;
+        msLbl.textContent = def+'ms';
+        speedLbl.textContent = getSpeedLabel(def);
+      });
+
+      row.appendChild(slider);
+      row.appendChild(msLbl);
+      row.appendChild(resetBtn);
+      list.appendChild(row);
+    });
+  });
+}
+
+function getSpeedLabel(ms) {
+  if (ms <= 80)  return '⚡ Very Fast';
+  if (ms <= 160) return '🔥 Fast';
+  if (ms <= 300) return '▶ Normal';
+  if (ms <= 600) return '🐢 Slow';
+  return '🐌 Very Slow';
 }
 
 // ══════════════════════════════════════════
