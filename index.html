@@ -206,8 +206,19 @@ function goTab(name) {
   sw.style.flex = '1';
 }
 document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
-  if (t.dataset.tab === 'record') syncControlsToRecord();
-  goTab(t.dataset.tab);
+  const name = t.dataset.tab;
+  // going to record tab: finalize + sync + rebuild stage (preserves existing data)
+  if (name === 'record' && cues.length > 0) {
+    finalizeCues();
+    syncControlsToRecord();
+    buildStage();
+  }
+  // going back to sync tab: re-render timing list with current data intact
+  if (name === 'sync' && cues.length > 0) {
+    renderTimingList();
+    updateTapUI();
+  }
+  goTab(name);
 }));
 
 // ══════════════════════════════════════════
@@ -279,10 +290,16 @@ const tapUndo   = document.getElementById('tap-undo');
 const syncAudio = document.getElementById('audio-sync');
 
 function initTapSync() {
-  tapIdx = 0;
-  cues.forEach(c => c.startTime = null);
-  tapBtn.disabled = false;
-  tapUndo.disabled = true;
+  // Only reset if genuinely starting fresh (no timings yet)
+  const alreadyTapped = cues.filter(c => c.startTime !== null).length;
+  if (alreadyTapped === 0) {
+    tapIdx = 0;
+    cues.forEach(c => c.startTime = null);
+  } else {
+    tapIdx = alreadyTapped; // resume from where we left off
+  }
+  tapBtn.disabled = tapIdx >= cues.length;
+  tapUndo.disabled = tapIdx === 0;
   updateTapUI();
   renderTimingList();
 }
@@ -297,16 +314,21 @@ function updateTapUI() {
     tapNextEl.textContent = tapIdx+1 < cues.length ? 'Next → ' + cues[tapIdx+1].lines.join(' | ') : '(last cue)';
     tapBtn.disabled = false;
   }
-  tapProgEl.textContent = tapIdx + ' / ' + cues.length;
+  const tappedCount = cues.filter(c => c.startTime !== null).length;
+  tapProgEl.textContent = tappedCount + ' / ' + cues.length + ' tapped';
 }
 
 function doTap() {
   if (tapIdx >= cues.length) return;
   cues[tapIdx].startTime = parseFloat(syncAudio.currentTime.toFixed(2));
+  console.log('Tapped cue', tapIdx, 'at', cues[tapIdx].startTime, 'sec');
   tapIdx++;
   tapUndo.disabled = false;
   updateTapUI();
   renderTimingList();
+  // show tapped time feedback
+  const lastT = cues[tapIdx-1].startTime;
+  tapProgEl.textContent = (cues.filter(c=>c.startTime!==null).length) + ' / ' + cues.length + ' tapped — last: ' + secsToMmss(lastT);
 }
 
 tapBtn.addEventListener('click', doTap);
@@ -334,6 +356,25 @@ document.addEventListener('keydown', e => {
   }
 });
 
+function secsToMmss(s) {
+  if (s === null || s === undefined || isNaN(s)) return '';
+  const m = Math.floor(s / 60);
+  const sec = (s % 60).toFixed(1).padStart(4, '0');
+  return m + ':' + sec;
+}
+function mmssToSecs(str) {
+  if (!str || !str.trim()) return null;
+  str = str.trim();
+  if (str.includes(':')) {
+    const parts = str.split(':');
+    const m = parseFloat(parts[0]) || 0;
+    const s = parseFloat(parts[1]) || 0;
+    return parseFloat((m * 60 + s).toFixed(2));
+  }
+  const v = parseFloat(str);
+  return isNaN(v) ? null : v;
+}
+
 function renderTimingList() {
   const list = document.getElementById('timing-list');
   list.innerHTML = '';
@@ -341,15 +382,15 @@ function renderTimingList() {
     const row = document.createElement('div');
     row.className = 'tr';
     row.innerHTML = `<span class="ti">#${i+1}</span>
-      <span class="tt"><input type="number" step="0.1" min="0" value="${cue.startTime??''}" placeholder="sec" data-i="${i}"></span>
+      <span class="tt"><input type="text" value="${secsToMmss(cue.startTime)}" placeholder="m:ss" data-i="${i}" style="width:62px;font-size:0.76rem;" title="Enter as m:ss (e.g. 1:23.5) or seconds (e.g. 83.5)"></span>
       <span class="tx">${cue.lines.join(' | ')}</span>
       <span class="td" data-i="${i}">✕</span>`;
     list.appendChild(row);
   });
   list.querySelectorAll('input').forEach(inp => inp.addEventListener('change', e => {
     const i = +e.target.dataset.i;
-    const v = parseFloat(e.target.value);
-    cues[i].startTime = isNaN(v) ? null : v;
+    cues[i].startTime = mmssToSecs(e.target.value);
+    e.target.value = secsToMmss(cues[i].startTime);
   }));
   list.querySelectorAll('.td').forEach(btn => btn.addEventListener('click', e => {
     cues[+e.target.dataset.i].startTime = null; renderTimingList();
@@ -365,15 +406,20 @@ document.getElementById('sync-go').addEventListener('click', () => {
   syncControlsToRecord();
   buildStage();
   goTab('record');
+  // auto-start preview so they see it immediately
+  setTimeout(startPlayback, 200);
 });
 document.getElementById('sync-back').addEventListener('click', () => goTab('setup'));
 
 function finalizeCues() {
-  cues.sort((a,b) => {
-    if (a.startTime===null) return 1;
-    if (b.startTime===null) return -1;
-    return a.startTime - b.startTime;
-  });
+  // only sort cues that have timings; preserve order of untimed ones
+  const timed = cues.filter(c => c.startTime !== null);
+  const untimed = cues.filter(c => c.startTime === null);
+  timed.sort((a,b) => a.startTime - b.startTime);
+  cues.length = 0;
+  timed.forEach(c => cues.push(c));
+  untimed.forEach(c => cues.push(c));
+  // compute endTimes
   cues.forEach((c,i) => {
     c.endTime = (i+1 < cues.length && cues[i+1].startTime !== null) ? cues[i+1].startTime : null;
   });
