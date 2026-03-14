@@ -4,18 +4,18 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Lyric Subtitle Tool</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: 'Segoe UI', sans-serif; background: #1a1a2e; color: #eee; overflow-x: hidden; }
 
-  /* ── EDITOR ── */
   #editor { padding: 10px 16px; background: #16213e; border-bottom: 2px solid #0f3460; }
   #editor h1 { font-size: 1rem; color: #e94560; margin-bottom: 8px; letter-spacing: 1px; }
   label { font-size: 0.68rem; color: #aaa; display: block; margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.4px; }
   textarea { width: 100%; height: 72px; background: #0f3460; border: 1px solid #e94560; border-radius: 5px; color: #fff; padding: 7px 10px; font-size: 0.85rem; resize: vertical; outline: none; margin-bottom: 8px; }
   textarea::placeholder { color: #555; }
 
-  .controls-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; margin-bottom: 8px; }
+  .controls-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; margin-bottom: 8px; }
   .ctrl-group { display: flex; flex-direction: column; gap: 3px; }
   .slider-row { display: flex; align-items: center; gap: 6px; }
   input[type=range] { flex: 1; accent-color: #e94560; }
@@ -23,58 +23,104 @@
   select { background: #0f3460; color: #fff; border: 1px solid #444; border-radius: 4px; padding: 5px 8px; font-size: 0.82rem; outline: none; cursor: pointer; width: 100%; }
 
   .btn-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-  button { background: #e94560; color: #fff; border: none; border-radius: 5px; padding: 7px 14px; font-size: 0.82rem; font-weight: 700; cursor: pointer; transition: background 0.15s; }
+  button { background: #e94560; color: #fff; border: none; border-radius: 5px; padding: 7px 14px; font-size: 0.82rem; font-weight: 700; cursor: pointer; transition: background 0.15s; user-select: none; }
   button:hover { background: #c73652; }
   button:disabled { opacity: 0.35; cursor: not-allowed; }
   button.sec { background: #0f3460; border: 1px solid #e94560; }
   button.sec:hover:not(:disabled) { background: #1a4a80; }
+
+  /* HOLD button — special */
+  #hold-btn {
+    background: #ff8c00;
+    border: 2px solid #ffc04d;
+    font-size: 0.85rem;
+    padding: 7px 18px;
+    letter-spacing: 0.5px;
+    box-shadow: 0 0 0 0 rgba(255,140,0,0.6);
+    transition: background 0.1s, box-shadow 0.1s, transform 0.1s;
+  }
+  #hold-btn.held {
+    background: #ff3300;
+    border-color: #ff7755;
+    box-shadow: 0 0 12px 4px rgba(255,60,0,0.7);
+    transform: scale(1.06);
+  }
+  #hold-btn:disabled { opacity: 0.35; }
+
+  /* SCREENSHOT button */
+  #screenshot-btn {
+    background: #1a7a4a;
+    border: 1px solid #2ecc71;
+  }
+  #screenshot-btn:hover:not(:disabled) { background: #145e38; }
+
   #cue-info { font-size: 0.78rem; color: #888; margin-left: 4px; }
 
   #progress-bar-wrap { background: #000; height: 3px; }
   #progress-bar { height: 100%; background: #e94560; width: 0%; transition: width 0.1s linear; }
 
-  /* ── STAGE — fills remaining viewport height ── */
+  /* ── STAGE ── */
   #stage {
     background: #00FF00;
     width: 100vw;
-    /* fill remaining space after editor */
-    height: calc(100vh - var(--editor-h, 200px));
     display: flex;
-    align-items: center;       /* vertically center the text block */
+    align-items: center;
     justify-content: center;
     position: relative;
     overflow: hidden;
+    cursor: grab;
+  }
+  #stage:active { cursor: grabbing; }
+
+  /* scroll hint */
+  #scroll-hint {
+    position: absolute;
+    bottom: 10px;
+    right: 14px;
+    font-size: 0.65rem;
+    color: rgba(0,100,0,0.55);
+    font-family: 'Segoe UI', sans-serif;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    pointer-events: none;
+    text-transform: uppercase;
   }
 
-  #subtitle-block {
-    text-align: center;
-    width: 92%;
-    padding: 0;
-  }
-
+  #subtitle-block { text-align: center; width: 92%; padding: 0; }
   .cue-block { display: none; line-height: 1.25; }
   .sub-line { display: block; }
 
-  /* each character is a span */
   .char {
     display: inline;
     font-family: 'Arial Black', 'Arial', sans-serif;
     font-weight: 900;
     text-transform: uppercase;
     color: #ffffff;
-    text-shadow:
-      2px  2px 0 #000,
-      -2px  2px 0 #000,
-       2px -2px 0 #000,
-      -2px -2px 0 #000,
-       0    3px 8px rgba(0,0,0,0.9);
+    text-shadow: 2px 2px 0 #000, -2px 2px 0 #000, 2px -2px 0 #000, -2px -2px 0 #000, 0 3px 8px rgba(0,0,0,0.9);
     transition: color 0.05s ease;
   }
   .char.highlighted { color: #FFE600; }
   .char.space { display: inline; }
+
+  /* screenshot flash */
+  @keyframes flashWhite {
+    0%   { opacity: 0; }
+    20%  { opacity: 0.7; }
+    100% { opacity: 0; }
+  }
+  #flash-overlay {
+    position: fixed; inset: 0;
+    background: white;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 9999;
+  }
+  #flash-overlay.flash { animation: flashWhite 0.4s ease forwards; }
 </style>
 </head>
 <body>
+
+<div id="flash-overlay"></div>
 
 <div id="editor">
   <h1>🎵 Lyric Subtitle Tool</h1>
@@ -90,16 +136,16 @@
       </select>
     </div>
     <div class="ctrl-group">
-      <label id="speed-label">Word Speed</label>
+      <label>Word Speed</label>
       <div class="slider-row">
         <input type="range" id="word-speed" min="80" max="1500" value="380" step="20">
         <span class="val-label" id="word-speed-val">380 ms</span>
       </div>
     </div>
     <div class="ctrl-group">
-      <label>Char Speed <span style="color:#555;font-size:0.65rem;">(char mode)</span></label>
+      <label>Char Speed</label>
       <div class="slider-row">
-        <input type="range" id="char-speed" min="20" max="800" value="120" step="10">
+        <input type="range" id="char-speed" min="20" max="1500" value="120" step="10">
         <span class="val-label" id="char-speed-val">120 ms</span>
       </div>
     </div>
@@ -131,9 +177,11 @@
     <button id="load-btn">⬆ Load</button>
     <button class="sec" id="play-btn" disabled>▶ Play</button>
     <button class="sec" id="pause-btn" disabled>⏸ Pause</button>
+    <button id="hold-btn" disabled>⏺ HOLD</button>
     <button class="sec" id="reset-btn" disabled>⏹ Reset</button>
     <button class="sec" id="prev-btn" disabled>◀ Prev</button>
     <button class="sec" id="next-btn" disabled>Next ▶</button>
+    <button id="screenshot-btn" disabled>📸 Screenshot</button>
     <span id="cue-info">Load lyrics to begin</span>
   </div>
 </div>
@@ -144,19 +192,20 @@
   <div id="subtitle-block">
     <span class="char" style="font-size:4vw;color:#009900;">PASTE LYRICS &amp; CLICK LOAD</span>
   </div>
+  <div id="scroll-hint">↕ Scroll to change cue</div>
 </div>
 
 <script>
-// measure editor height and set CSS var so stage fills the rest
+// ── Stage height ──
 function setStageHeight() {
-  const editorH = document.getElementById('editor').offsetHeight +
-                  document.getElementById('progress-bar-wrap').offsetHeight;
-  document.getElementById('stage').style.height = (window.innerHeight - editorH) + 'px';
+  const edH = document.getElementById('editor').offsetHeight +
+              document.getElementById('progress-bar-wrap').offsetHeight;
+  document.getElementById('stage').style.height = (window.innerHeight - edH) + 'px';
 }
 window.addEventListener('resize', setStageHeight);
 setStageHeight();
 
-// ── DOM refs ──
+// ── DOM ──
 const lyricsInput  = document.getElementById('lyrics-input');
 const modeEl       = document.getElementById('mode');
 const wordSpeedEl  = document.getElementById('word-speed');
@@ -171,17 +220,22 @@ const linesPerCue  = document.getElementById('lines-per-cue');
 const loadBtn      = document.getElementById('load-btn');
 const playBtn      = document.getElementById('play-btn');
 const pauseBtn     = document.getElementById('pause-btn');
+const holdBtn      = document.getElementById('hold-btn');
 const resetBtn     = document.getElementById('reset-btn');
 const prevBtn      = document.getElementById('prev-btn');
 const nextBtn      = document.getElementById('next-btn');
+const screenshotBtn= document.getElementById('screenshot-btn');
 const cueInfo      = document.getElementById('cue-info');
 const block        = document.getElementById('subtitle-block');
 const progressBar  = document.getElementById('progress-bar');
+const stage        = document.getElementById('stage');
+const flashOverlay = document.getElementById('flash-overlay');
 
 // ── State ──
-let cues = [], allUnits = [], unitIndex = 0, currentCue = 0, playing = false, timer = null;
+let cues = [], allUnits = [], unitIndex = 0, currentCue = 0;
+let playing = false, held = false, timer = null;
 
-// ── Slider listeners ──
+// ── Sliders ──
 wordSpeedEl.addEventListener('input', () => wordSpeedVal.textContent = wordSpeedEl.value + ' ms');
 charSpeedEl.addEventListener('input', () => charSpeedVal.textContent = charSpeedEl.value + ' ms');
 cuePauseEl.addEventListener('input',  () => cuePauseVal.textContent  = cuePauseEl.value  + ' ms');
@@ -200,13 +254,12 @@ loadBtn.addEventListener('click', () => {
   for (let i = 0; i < lines.length; i += n) cues.push(lines.slice(i, i + n));
   buildDOM();
   resetState();
-  [playBtn, pauseBtn, resetBtn, prevBtn, nextBtn].forEach(b => b.disabled = false);
+  [playBtn, pauseBtn, holdBtn, resetBtn, prevBtn, nextBtn, screenshotBtn].forEach(b => b.disabled = false);
   updateNav();
   setStageHeight();
 });
 
 // ── BUILD DOM ──
-// allUnits: each unit is {el, cueIdx} — a word span OR a char span depending on mode
 function buildDOM() {
   block.innerHTML = '';
   allUnits = [];
@@ -238,7 +291,6 @@ function buildDOM() {
           allUnits.push({ el: span, cueIdx: cIdx });
         });
       } else {
-        // char by char — space chars are skipped from highlighting but rendered
         for (let ci = 0; ci < line.length; ci++) {
           const ch = line[ci];
           const span = document.createElement('span');
@@ -246,9 +298,7 @@ function buildDOM() {
           span.textContent = ch;
           span.style.fontSize = fs;
           lineSpan.appendChild(span);
-          if (ch !== ' ') {
-            allUnits.push({ el: span, cueIdx: cIdx });
-          }
+          if (ch !== ' ') allUnits.push({ el: span, cueIdx: cIdx });
         }
       }
 
@@ -268,26 +318,34 @@ function showCue(idx) {
 }
 
 function resetState() {
-  playing = false; clearTimeout(timer); unitIndex = 0;
+  playing = false; held = false; clearTimeout(timer);
+  unitIndex = 0;
+  holdBtn.classList.remove('held');
   document.querySelectorAll('.char').forEach(c => c.classList.remove('highlighted'));
   if (cues.length) showCue(0);
   updateProgress();
 }
 
-// ── PLAY ──
-playBtn.addEventListener('click', () => { if (!playing && cues.length) { playing = true; tick(); } });
-
 function getSpeed() {
   return modeEl.value === 'char' ? parseInt(charSpeedEl.value) : parseInt(wordSpeedEl.value);
 }
 
+// ── PLAY ──
+playBtn.addEventListener('click', () => {
+  if (!playing && cues.length) {
+    playing = true;
+    held = false;
+    holdBtn.classList.remove('held');
+    tick();
+  }
+});
+
 function tick() {
-  if (!playing) return;
+  if (!playing || held) return;
   if (unitIndex >= allUnits.length) { playing = false; updateProgress(); return; }
 
   const entry = allUnits[unitIndex];
 
-  // cue boundary — pause then switch
   if (entry.cueIdx !== currentCue) {
     playing = false;
     timer = setTimeout(() => {
@@ -306,12 +364,45 @@ function tick() {
   timer = setTimeout(tick, getSpeed());
 }
 
-// ── PAUSE / RESET ──
-pauseBtn.addEventListener('click', () => { playing = false; clearTimeout(timer); });
+// ── PAUSE ──
+pauseBtn.addEventListener('click', () => {
+  playing = false;
+  held = false;
+  holdBtn.classList.remove('held');
+  clearTimeout(timer);
+});
+
+// ── HOLD — press & hold to freeze, release to resume ──
+holdBtn.addEventListener('mousedown',  startHold);
+holdBtn.addEventListener('touchstart', startHold, { passive: true });
+holdBtn.addEventListener('mouseup',    endHold);
+holdBtn.addEventListener('mouseleave', endHold);
+holdBtn.addEventListener('touchend',   endHold);
+holdBtn.addEventListener('touchcancel',endHold);
+
+function startHold(e) {
+  if (!playing && unitIndex === 0) return; // nothing running yet
+  held = true;
+  holdBtn.classList.add('held');
+  clearTimeout(timer);
+}
+
+function endHold(e) {
+  if (!held) return;
+  held = false;
+  holdBtn.classList.remove('held');
+  // resume if was playing
+  if (playing) {
+    tick();
+  }
+}
+
+// ── RESET ──
 resetBtn.addEventListener('click', () => {
   clearTimeout(timer);
   document.querySelectorAll('.char').forEach(c => c.classList.remove('highlighted'));
-  unitIndex = 0; playing = false;
+  unitIndex = 0; playing = false; held = false;
+  holdBtn.classList.remove('held');
   if (cues.length) showCue(0);
   updateNav(); updateProgress();
 });
@@ -321,21 +412,73 @@ prevBtn.addEventListener('click', () => jumpToCue(Math.max(0, currentCue - 1)));
 nextBtn.addEventListener('click', () => jumpToCue(Math.min(cues.length - 1, currentCue + 1)));
 
 function jumpToCue(idx) {
-  playing = false; clearTimeout(timer);
+  playing = false; held = false; clearTimeout(timer);
+  holdBtn.classList.remove('held');
   document.querySelectorAll('.char').forEach(c => c.classList.remove('highlighted'));
   unitIndex = allUnits.findIndex(u => u.cueIdx === idx);
   if (unitIndex < 0) unitIndex = 0;
   showCue(idx); updateNav(); updateProgress();
 }
 
-function updateNav() {
-  cueInfo.textContent = cues.length ? 'Cue ' + (currentCue + 1) + ' / ' + cues.length : 'Load lyrics to begin';
-}
-function updateProgress() {
-  progressBar.style.width = (allUnits.length ? unitIndex / allUnits.length * 100 : 0) + '%';
-}
+// ── SCROLL on green screen to change cue ──
+let scrollAccum = 0;
+stage.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  scrollAccum += e.deltaY;
+  if (Math.abs(scrollAccum) > 60) {
+    if (scrollAccum > 0) jumpToCue(Math.min(cues.length - 1, currentCue + 1));
+    else                 jumpToCue(Math.max(0, currentCue - 1));
+    scrollAccum = 0;
+  }
+}, { passive: false });
 
-// spacebar = play/pause
+// touch swipe on stage
+let touchStartY = null;
+stage.addEventListener('touchstart', e => { touchStartY = e.touches[0].clientY; }, { passive: true });
+stage.addEventListener('touchend', e => {
+  if (touchStartY === null) return;
+  const diff = touchStartY - e.changedTouches[0].clientY;
+  if (Math.abs(diff) > 40) {
+    if (diff > 0) jumpToCue(Math.min(cues.length - 1, currentCue + 1));
+    else          jumpToCue(Math.max(0, currentCue - 1));
+  }
+  touchStartY = null;
+});
+
+// ── SCREENSHOT ──
+screenshotBtn.addEventListener('click', async () => {
+  screenshotBtn.disabled = true;
+  screenshotBtn.textContent = '⏳ Capturing...';
+
+  try {
+    const canvas = await html2canvas(stage, {
+      backgroundColor: '#00FF00',
+      scale: 2, // high resolution
+      useCORS: true,
+      logging: false,
+      // exclude the scroll hint text
+      ignoreElements: el => el.id === 'scroll-hint'
+    });
+
+    // flash effect
+    flashOverlay.classList.remove('flash');
+    void flashOverlay.offsetWidth;
+    flashOverlay.classList.add('flash');
+
+    // download
+    const link = document.createElement('a');
+    link.download = 'subtitle-cue-' + (currentCue + 1) + '.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  } catch (err) {
+    alert('Screenshot failed: ' + err.message);
+  }
+
+  screenshotBtn.disabled = false;
+  screenshotBtn.textContent = '📸 Screenshot';
+});
+
+// ── SPACEBAR = play/pause ──
 document.addEventListener('keydown', e => {
   if (e.code === 'Space' && document.activeElement.tagName !== 'TEXTAREA') {
     e.preventDefault();
@@ -343,6 +486,13 @@ document.addEventListener('keydown', e => {
     else if (cues.length) { playing = true; tick(); }
   }
 });
+
+function updateNav() {
+  cueInfo.textContent = cues.length ? 'Cue ' + (currentCue + 1) + ' / ' + cues.length : 'Load lyrics to begin';
+}
+function updateProgress() {
+  progressBar.style.width = (allUnits.length ? unitIndex / allUnits.length * 100 : 0) + '%';
+}
 </script>
 </body>
 </html>
