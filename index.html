@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lyric Subtitle Tool</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', sans-serif; background: #1a1a2e; color: #eee; min-height: 100vh; }
+  #editor { padding: 20px 24px; background: #16213e; border-bottom: 2px solid #0f3460; }
+  #editor h1 { font-size: 1.3rem; color: #e94560; margin-bottom: 14px; letter-spacing: 1px; }
+  label { font-size: 0.72rem; color: #aaa; display: block; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+  textarea { width: 100%; height: 110px; background: #0f3460; border: 1px solid #e94560; border-radius: 6px; color: #fff; padding: 10px; font-size: 0.93rem; resize: vertical; outline: none; margin-bottom: 14px; }
+  textarea::placeholder { color: #555; }
+  .controls-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 14px; }
+  .ctrl-group { display: flex; flex-direction: column; gap: 5px; }
+  .slider-row { display: flex; align-items: center; gap: 8px; }
+  input[type=range] { flex: 1; accent-color: #e94560; }
+  .val-label { font-size: 0.82rem; color: #e94560; font-weight: 700; min-width: 56px; text-align: right; }
+  select { background: #0f3460; color: #fff; border: 1px solid #444; border-radius: 4px; padding: 6px 10px; font-size: 0.88rem; outline: none; cursor: pointer; }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+  button { background: #e94560; color: #fff; border: none; border-radius: 6px; padding: 9px 18px; font-size: 0.9rem; font-weight: 700; cursor: pointer; letter-spacing: 0.4px; transition: background 0.15s; }
+  button:hover { background: #c73652; }
+  button:disabled { opacity: 0.35; cursor: not-allowed; }
+  button.sec { background: #0f3460; border: 1px solid #e94560; }
+  button.sec:hover:not(:disabled) { background: #1a4a80; }
+  #cue-info { font-size: 0.82rem; color: #888; margin-left: 6px; }
+  #preview-label { text-align: center; padding: 5px; font-size: 0.72rem; color: #555; background: #111; text-transform: uppercase; letter-spacing: 1px; }
+  #progress-bar-wrap { background: #111; height: 4px; width: 100%; }
+  #progress-bar { height: 100%; background: #e94560; width: 0%; transition: width 0.15s linear; }
+  #stage { background: #00FF00; width: 100%; aspect-ratio: 16 / 9; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 7%; position: relative; overflow: hidden; }
+  #subtitle-block { text-align: center; width: 100%; padding: 0 3%; }
+  .cue-block { display: none; line-height: 1.2; }
+  .sub-line { display: block; }
+  .word { display: inline-block; font-family: 'Arial Black', 'Arial', sans-serif; font-weight: 900; text-transform: uppercase; color: #ffffff; text-shadow: 2px 2px 0 #000, -2px 2px 0 #000, 2px -2px 0 #000, -2px -2px 0 #000, 0 4px 10px rgba(0,0,0,0.85); margin: 0 0.1em; transition: color 0.06s ease; }
+  .word.highlighted { color: #FFE600; }
+</style>
+</head>
+<body>
+<div id="editor">
+  <h1>🎵 Lyric Subtitle Tool</h1>
+  <label>Paste Full Lyrics — auto-splits into cues</label>
+  <textarea id="lyrics-input" placeholder="AAKE RAAS RACHA JAA&#10;AAKE RAAS RACHA JAA&#10;MURLIWALE BANSIWALE&#10;AAKE RAAS RACHA JAA"></textarea>
+  <div class="controls-grid">
+    <div class="ctrl-group">
+      <label>Word Speed <span style="color:#555">(ms per word highlight)</span></label>
+      <div class="slider-row">
+        <input type="range" id="word-speed" min="80" max="1500" value="380" step="20">
+        <span class="val-label" id="word-speed-val">380 ms</span>
+      </div>
+    </div>
+    <div class="ctrl-group">
+      <label>Cue Pause <span style="color:#555">(hold after each cue)</span></label>
+      <div class="slider-row">
+        <input type="range" id="cue-pause" min="0" max="4000" value="1200" step="100">
+        <span class="val-label" id="cue-pause-val">1200 ms</span>
+      </div>
+    </div>
+    <div class="ctrl-group">
+      <label>Font Size</label>
+      <div class="slider-row">
+        <input type="range" id="font-size" min="2" max="9" value="5" step="0.25">
+        <span class="val-label" id="font-size-val">5 vw</span>
+      </div>
+    </div>
+    <div class="ctrl-group">
+      <label>Lines per Cue</label>
+      <select id="lines-per-cue">
+        <option value="1">1 line per cue</option>
+        <option value="2" selected>2 lines per cue</option>
+        <option value="3">3 lines per cue</option>
+      </select>
+    </div>
+  </div>
+  <div class="btn-row">
+    <button id="load-btn">⬆ Load Lyrics</button>
+    <button class="sec" id="play-btn" disabled>▶ Play</button>
+    <button class="sec" id="pause-btn" disabled>⏸ Pause</button>
+    <button class="sec" id="reset-btn" disabled>⏹ Reset</button>
+    <button class="sec" id="prev-btn" disabled>◀ Prev</button>
+    <button class="sec" id="next-btn" disabled>Next ▶</button>
+    <span id="cue-info">Load lyrics to begin</span>
+  </div>
+</div>
+<div id="progress-bar-wrap"><div id="progress-bar"></div></div>
+<div id="preview-label">🟩 Green Screen — 16:9 — Chroma Key Ready</div>
+<div id="stage">
+  <div id="subtitle-block">
+    <span class="word" style="font-size:4vw;color:#009900;">PASTE LYRICS &amp; CLICK LOAD</span>
+  </div>
+</div>
+<script>
+const lyricsInput  = document.getElementById('lyrics-input');
+const wordSpeedEl  = document.getElementById('word-speed');
+const wordSpeedVal = document.getElementById('word-speed-val');
+const cuePauseEl   = document.getElementById('cue-pause');
+const cuePauseVal  = document.getElementById('cue-pause-val');
+const fontSizeEl   = document.getElementById('font-size');
+const fontSizeVal  = document.getElementById('font-size-val');
+const linesPerCue  = document.getElementById('lines-per-cue');
+const loadBtn      = document.getElementById('load-btn');
+const playBtn      = document.getElementById('play-btn');
+const pauseBtn     = document.getElementById('pause-btn');
+const resetBtn     = document.getElementById('reset-btn');
+const prevBtn      = document.getElementById('prev-btn');
+const nextBtn      = document.getElementById('next-btn');
+const cueInfo      = document.getElementById('cue-info');
+const block        = document.getElementById('subtitle-block');
+const progressBar  = document.getElementById('progress-bar');
+
+let cues = [], allWords = [], wordIndex = 0, currentCue = 0, playing = false, timer = null;
+
+wordSpeedEl.addEventListener('input', () => wordSpeedVal.textContent = wordSpeedEl.value + ' ms');
+cuePauseEl.addEventListener('input',  () => cuePauseVal.textContent  = cuePauseEl.value  + ' ms');
+fontSizeEl.addEventListener('input',  () => {
+  fontSizeVal.textContent = fontSizeEl.value + ' vw';
+  document.querySelectorAll('.word').forEach(w => w.style.fontSize = fontSizeEl.value + 'vw');
+});
+
+loadBtn.addEventListener('click', () => {
+  const raw = lyricsInput.value.trim();
+  if (!raw) return;
+  const lines = raw.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  const n = parseInt(linesPerCue.value);
+  cues = [];
+  for (let i = 0; i < lines.length; i += n) cues.push(lines.slice(i, i + n));
+  buildDOM();
+  resetState();
+  [playBtn, pauseBtn, resetBtn, prevBtn, nextBtn].forEach(b => b.disabled = false);
+  updateNav();
+});
+
+function buildDOM() {
+  block.innerHTML = '';
+  allWords = [];
+  const fs = fontSizeEl.value + 'vw';
+  cues.forEach((lines, cIdx) => {
+    const cueDiv = document.createElement('div');
+    cueDiv.className = 'cue-block';
+    lines.forEach((line, lIdx) => {
+      const lineSpan = document.createElement('span');
+      lineSpan.className = 'sub-line';
+      line.split(/\s+/).forEach(word => {
+        const span = document.createElement('span');
+        span.className = 'word';
+        span.textContent = word;
+        span.style.fontSize = fs;
+        lineSpan.appendChild(span);
+        allWords.push({ el: span, cueIdx: cIdx });
+      });
+      cueDiv.appendChild(lineSpan);
+      if (lIdx < lines.length - 1) cueDiv.appendChild(document.createElement('br'));
+    });
+    block.appendChild(cueDiv);
+  });
+  showCue(0);
+}
+
+function showCue(idx) {
+  document.querySelectorAll('.cue-block').forEach((el, i) => el.style.display = (i === idx) ? 'block' : 'none');
+  currentCue = idx;
+}
+
+function resetState() {
+  playing = false; clearTimeout(timer); wordIndex = 0;
+  document.querySelectorAll('.word').forEach(w => w.classList.remove('highlighted'));
+  if (cues.length) showCue(0);
+  updateProgress();
+}
+
+playBtn.addEventListener('click', () => { if (!playing && cues.length) { playing = true; tick(); } });
+
+function tick() {
+  if (!playing) return;
+  if (wordIndex >= allWords.length) { playing = false; updateProgress(); return; }
+  const entry = allWords[wordIndex];
+  if (entry.cueIdx !== currentCue) {
+    const pause = parseInt(cuePauseEl.value);
+    playing = false;
+    timer = setTimeout(() => {
+      document.querySelectorAll('.word').forEach(w => w.classList.remove('highlighted'));
+      showCue(entry.cueIdx);
+      updateNav();
+      playing = true;
+      tick();
+    }, pause);
+    return;
+  }
+  entry.el.classList.add('highlighted');
+  wordIndex++;
+  updateProgress();
+  timer = setTimeout(tick, parseInt(wordSpeedEl.value));
+}
+
+pauseBtn.addEventListener('click', () => { playing = false; clearTimeout(timer); });
+
+resetBtn.addEventListener('click', () => {
+  clearTimeout(timer);
+  document.querySelectorAll('.word').forEach(w => w.classList.remove('highlighted'));
+  wordIndex = 0; playing = false;
+  if (cues.length) showCue(0);
+  updateNav(); updateProgress();
+});
+
+prevBtn.addEventListener('click', () => jumpToCue(Math.max(0, currentCue - 1)));
+nextBtn.addEventListener('click', () => jumpToCue(Math.min(cues.length - 1, currentCue + 1)));
+
+function jumpToCue(idx) {
+  playing = false; clearTimeout(timer);
+  document.querySelectorAll('.word').forEach(w => w.classList.remove('highlighted'));
+  wordIndex = allWords.findIndex(w => w.cueIdx === idx);
+  if (wordIndex < 0) wordIndex = 0;
+  showCue(idx); updateNav(); updateProgress();
+}
+
+function updateNav() {
+  cueInfo.textContent = cues.length ? 'Cue ' + (currentCue + 1) + ' / ' + cues.length : 'Load lyrics to begin';
+}
+function updateProgress() {
+  progressBar.style.width = (allWords.length ? (wordIndex / allWords.length * 100) : 0) + '%';
+}
+</script>
+</body>
+</html>
