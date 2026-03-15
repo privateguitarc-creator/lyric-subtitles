@@ -77,8 +77,8 @@ audio { width:100%; border-radius:5px; }
 #rec-timer.on { display:inline; }
 
 /* STAGE */
-#stage-wrap { overflow:hidden; position:relative; flex:1; min-height:0; background:#111; }
-#stage { background:transparent; width:100%; height:100%; min-height:0; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+#stage-wrap { overflow:hidden; position:relative; flex:1; min-height:0; }
+#stage { background: repeating-linear-gradient(45deg, #1a1a1a 0px, #1a1a1a 10px, #222 10px, #222 20px); width:100%; height:100%; min-height:0; display:flex; align-items:center; justify-content:center; overflow:hidden; }
 #stage-inner { text-align:center; width:90%; line-height:1.25; }
 .cue-div { display:none; }
 .cue-div.on { display:block; }
@@ -766,7 +766,9 @@ document.getElementById('r-record').addEventListener('click', () => {
   const ctx0 = recCanvas.getContext('2d', { alpha: true });
   ctx0.clearRect(0, 0, capW, capH);
   const stream = recCanvas.captureStream(30);
-  const mimeType = 'video/webm;codecs=vp9';
+  const mimeType = ['video/mp4;codecs=avc1','video/mp4','video/webm;codecs=vp9','video/webm']
+    .find(t => MediaRecorder.isTypeSupported(t)) || 'video/webm';
+  const fileExt = mimeType.includes('mp4') ? 'mp4' : 'webm';
   recordedChunks = [];
   mediaRecorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8000000 });
   mediaRecorder.ondataavailable = e => { if (e.data && e.data.size > 0) recordedChunks.push(e.data); };
@@ -780,7 +782,7 @@ document.getElementById('r-record').addEventListener('click', () => {
     const blob = new Blob(recordedChunks, { type: mimeType });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = 'lyrics-transparent.webm';
+    a.href = url; a.download = 'lyrics.' + fileExt;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 15000);
   };
