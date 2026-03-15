@@ -194,7 +194,7 @@ let cues = []; // [{lines, startTime, endTime}]
 let audioEl = null;        // the active audio element for preview/record
 let isPlaying = false;
 let rafId = null;          // requestAnimationFrame loop id
-let hlTimer = null;        // setTimeout for highlight ticking
+// hlTimer replaced by MessageChannel (_mc)
 let activeCueIdx = -1;     // which cue is currently shown (-1 = none/green)
 let unitIdx = 0;           // next unit to highlight
 let stageUnits = [];       // [{el, cueIdx}]
@@ -853,8 +853,7 @@ function rafLoop() {
   // cue changed?
   if (wantCue !== activeCueIdx) {
     clearHL();
-    clearTimeout(hlTimer);
-    if (wantCue === -1) {
+      if (wantCue === -1) {
       hideCue();
       unitIdx = 0;
     } else {
@@ -862,8 +861,7 @@ function rafLoop() {
       unitIdx = stageUnits.findIndex(u => u.cueIdx === wantCue);
       if (unitIdx < 0) unitIdx = 0;
       hlNextAt = performance.now(); // start immediately, no delay
-      clearTimeout(hlTimer);
-      scheduleNextHl();
+          scheduleNextHl();
     }
   }
 
@@ -871,15 +869,32 @@ function rafLoop() {
 }
 
 // ══════════════════════════════════════════
-// HIGHLIGHT TICKER — drift-free scheduling
-// Uses performance.now() to compensate for any setTimeout drift
+// HIGHLIGHT TICKER — MessageChannel precision
+// MessageChannel is not throttled by browser during canvas encoding
+// unlike setTimeout which gets delayed when main thread is busy
 // ══════════════════════════════════════════
-let hlNextAt = 0; // performance.now() when next highlight should fire
+let hlNextAt = 0;
+
+// MessageChannel fires at ~1ms precision, immune to encoding throttle
+const _mc = new MessageChannel();
+_mc.port1.onmessage = () => {
+  if (!isPlaying) return;
+  const now = performance.now();
+  if (now < hlNextAt - 1) {
+    // not time yet — wait the remaining delta
+    const remaining = hlNextAt - now;
+    if (remaining > 4) setTimeout(() => _mc.port2.postMessage(0), remaining - 2);
+    else _mc.port2.postMessage(0);
+    return;
+  }
+  hlTick();
+};
 
 function scheduleNextHl() {
-  const now = performance.now();
-  const delay = Math.max(0, hlNextAt - now);
-  hlTimer = setTimeout(hlTick, delay);
+  if (!isPlaying) return;
+  const delay = hlNextAt - performance.now();
+  if (delay > 4) setTimeout(() => _mc.port2.postMessage(0), delay - 2);
+  else _mc.port2.postMessage(0);
 }
 
 function hlTick() {
@@ -888,17 +903,14 @@ function hlTick() {
   const u = stageUnits[unitIdx];
   if (u.cueIdx !== activeCueIdx) return;
   u.el.classList.add('hl');
-  drawCanvas();
   unitIdx++;
-  // get speed: per-line override → global slider
   const mode = document.getElementById('r-mode').value;
-  const globalSpd = mode==='char'
+  const globalSpd = mode === 'char'
     ? parseInt(document.getElementById('r-csp').value)
     : parseInt(document.getElementById('r-wsp').value);
   const cue = cues[u.cueIdx];
   const lineSpd = (cue && cue.lineSpeeds && cue.lineSpeeds[u.lineIdx] != null)
-    ? cue.lineSpeeds[u.lineIdx]
-    : globalSpd;
+    ? cue.lineSpeeds[u.lineIdx] : globalSpd;
   hlNextAt += lineSpd;
   scheduleNextHl();
 }
@@ -944,7 +956,6 @@ function startPlayback() {
 function stopPlayback() {
   isPlaying = false;
   cancelAnimationFrame(rafId);
-  clearTimeout(hlTimer);
   if (audioEl) { audioEl.pause(); }
   hideCue(); clearHL();
   updateSeekBar();
@@ -1075,7 +1086,7 @@ document.getElementById('r-record').addEventListener('click', async () => {
   mediaRecorder.onstop = () => {
     clearInterval(recTimerInterval);
     isRecording = false;
-    cancelAnimationFrame(recRafId);
+    clearInterval(recRafId);
     const btn = document.getElementById('r-record');
     btn.textContent = '⏺ Record'; btn.classList.remove('rec');
     document.getElementById('rec-timer').classList.remove('on');
@@ -1092,13 +1103,9 @@ document.getElementById('r-record').addEventListener('click', async () => {
   isRecording = true;
   mediaRecorder.start(200);
 
-  // Single rAF loop draws canvas — runs independently, never blocks hlTick
-  function recLoop() {
-    if (!isRecording) return;
-    drawCanvas();
-    recRafId = requestAnimationFrame(recLoop);
-  }
-  recRafId = requestAnimationFrame(recLoop);
+  // Canvas draw loop using setInterval — completely decoupled from hlTick setTimeout
+  // setInterval for canvas, setTimeout for highlights — they don't share a queue
+  recRafId = setInterval(drawCanvas, 1000 / 30); // 30fps canvas refresh
 
   // Start playback AFTER recording is set up
   startPlayback();
@@ -1116,7 +1123,8 @@ document.getElementById('r-record').addEventListener('click', async () => {
 
 
 function stopRecording() {
-  cancelAnimationFrame(recRafId);
+  clearInterval(recRafId);   // canvas loop is setInterval
+  recRafId = null;
   if (mediaRecorder && mediaRecorder.state !== 'inactive') {
     try { mediaRecorder.requestData(); } catch(e) {}
     mediaRecorder.stop();
