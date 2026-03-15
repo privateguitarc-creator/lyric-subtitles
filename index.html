@@ -77,8 +77,8 @@ audio { width:100%; border-radius:5px; }
 #rec-timer.on { display:inline; }
 
 /* STAGE */
-#stage-wrap { overflow:hidden; position:relative; flex:1; min-height:0; }
-#stage { background:#00FF00; width:100%; height:100%; min-height:0; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+#stage-wrap { overflow:hidden; position:relative; flex:1; min-height:0; background: repeating-conic-gradient(#1a1a1a 0% 25%, #222 0% 50%) 0 0 / 20px 20px; }
+#stage { background:transparent; width:100%; height:100%; min-height:0; display:flex; align-items:center; justify-content:center; overflow:hidden; }
 #stage-inner { text-align:center; width:90%; line-height:1.25; }
 .cue-div { display:none; }
 .cue-div.on { display:block; }
@@ -153,10 +153,6 @@ canvas { display:none; }
       <button id="r-play">▶ Preview</button>
       <button id="r-stop" class="sec">⏹ Stop</button>
       <button id="r-record" class="grn">⏺ Record</button>
-      <select id="bg-mode" style="background:#0f3460;color:#fff;border:1px solid #444;border-radius:4px;padding:4px 8px;font-size:0.78rem;outline:none;cursor:pointer;">
-        <option value="green">🟩 Green Screen</option>
-        <option value="transparent">✨ Transparent BG</option>
-      </select>
       <span id="rec-timer">00:00</span>
       <span id="rec-status-msg" style="font-size:0.75rem;color:#f39c12;margin-left:6px;"></span>
       <div class="sl" style="margin-left:4px;"><label>Mode</label><select id="r-mode"><option value="word">Word</option><option value="char">Char</option></select></div>
@@ -976,15 +972,9 @@ function getCueRender(cueIdx, hlState) {
 
   const W = recCanvas.width, H = recCanvas.height;
   const off = new OffscreenCanvas(W, H);
-  const ctx = off.getContext('2d');
+  const ctx = off.getContext('2d', { alpha: true });
 
-  const bgModeVal = (document.getElementById('bg-mode') || {}).value || 'green';
-  if (bgModeVal === 'transparent') {
-    ctx.clearRect(0, 0, W, H);
-  } else {
-    ctx.fillStyle = '#00FF00';
-    ctx.fillRect(0, 0, W, H);
-  }
+  ctx.clearRect(0, 0, W, H); // transparent background
 
   const cueDiv = stageInner.querySelector(`.cue-div[data-cue="${cueIdx}"]`);
   if (!cueDiv) return null;
@@ -1048,10 +1038,8 @@ function drawCanvas() {
   const ctx = recCanvas.getContext('2d');
   const W = recCanvas.width, H = recCanvas.height;
 
-  const bgM = (document.getElementById('bg-mode') || {}).value || 'green';
   if (activeCueIdx < 0) {
-    if (bgM === 'transparent') ctx.clearRect(0, 0, W, H);
-    else { ctx.fillStyle = '#00FF00'; ctx.fillRect(0, 0, W, H); }
+    ctx.clearRect(0, 0, W, H); // transparent when no lyrics
     return;
   }
 
@@ -1065,55 +1053,35 @@ function drawCanvas() {
   }
 
   const bmp = getCueRender(activeCueIdx, hlState);
-  if (bmp) {
-    if (bgM === 'transparent') ctx.clearRect(0, 0, W, H);
-    else { ctx.fillStyle = '#00FF00'; ctx.fillRect(0, 0, W, H); }
-    ctx.drawImage(bmp, 0, 0);
-  } else {
-    if (bgM === 'transparent') ctx.clearRect(0, 0, W, H);
-    else { ctx.fillStyle = '#00FF00'; ctx.fillRect(0, 0, W, H); }
-  }
+  ctx.clearRect(0, 0, W, H);
+  if (bmp) ctx.drawImage(bmp, 0, 0);
 }
 
 
-document.getElementById('r-record').addEventListener('click', async () => {
+;
+
+document.getElementById('r-record').addEventListener('click', () => {
   if (isRecording) { stopRecording(); return; }
   if (!cues.length) { alert('Load lyrics first!'); return; }
 
+  // Setup canvas at 1080p
   const stageEl = document.getElementById('stage');
+  const capW = Math.round(1080 * stageEl.offsetWidth / stageEl.offsetHeight);
   const capH = 1080;
-  const capW = Math.round(capH * stageEl.offsetWidth / stageEl.offsetHeight);
   recCanvas.width  = capW;
   recCanvas.height = capH;
 
-  // First frame
-  const bgMode = document.getElementById('bg-mode').value;
-  const ctx0 = recCanvas.getContext('2d', { alpha: bgMode === 'transparent' });
-  if (bgMode === 'transparent') {
-    ctx0.clearRect(0, 0, capW, capH); // fully transparent
-  } else {
-    ctx0.fillStyle = '#00FF00';
-    ctx0.fillRect(0, 0, capW, capH);
-  }
+  // Initial transparent frame
+  const ctx0 = recCanvas.getContext('2d', { alpha: true });
+  ctx0.clearRect(0, 0, capW, capH);
 
-  let stream;
-  try { stream = recCanvas.captureStream(30); }
-  catch(e) { alert('Use Chrome browser for recording.'); return; }
+  // Capture canvas as video stream
+  const stream = recCanvas.captureStream(30);
 
-  // bgMode already declared above
-  // Transparent mode MUST use webm+vp9 (only format supporting alpha channel)
-  // Green screen mode can use mp4 for wider compatibility
-  const mimeType = bgMode === 'transparent'
-    ? (['video/webm;codecs=vp9','video/webm'].find(t => MediaRecorder.isTypeSupported(t)) || 'video/webm')
-    : (['video/mp4;codecs=avc1','video/mp4','video/webm;codecs=vp9','video/webm'].find(t => MediaRecorder.isTypeSupported(t)) || 'video/webm');
-  const fileExt = (bgMode === 'transparent' || !mimeType.includes('mp4')) ? 'webm' : 'mp4';
-
+  // WebM only — most reliable for canvas recording
+  const mimeType = 'video/webm;codecs=vp9';
   recordedChunks = [];
-  try {
-    mediaRecorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8000000 });
-  } catch(e) {
-    mediaRecorder = new MediaRecorder(stream);
-  }
+  mediaRecorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8000000 });
 
   mediaRecorder.ondataavailable = e => {
     if (e.data && e.data.size > 0) recordedChunks.push(e.data);
@@ -1130,23 +1098,31 @@ document.getElementById('r-record').addEventListener('click', async () => {
     const blob = new Blob(recordedChunks, { type: mimeType });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
-    a.href = url; a.download = 'green-screen-lyrics.' + fileExt;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    a.href = url;
+    a.download = 'green-screen-lyrics.webm';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 15000);
   };
 
-  // Update stage visual to match recording mode
-  document.getElementById('stage').style.background = bgMode === 'transparent' ? 'rgba(0,0,0,0)' : '#00FF00';
+  // Start recording BEFORE starting playback
   isRecording = true;
-  cueCache = {}; lastHlState = ''; // clear render cache
+  cueCache = {}; lastHlState = '';
   mediaRecorder.start(100);
+
+  // Canvas redraw loop — setInterval so it runs on system clock, not rAF
   recCanvasInterval = setInterval(drawCanvas, 1000 / 30);
+
+  // Start playback
   startPlayback();
 
+  // Update UI
   document.getElementById('r-record').textContent = '⏹ Stop & Save';
   document.getElementById('r-record').classList.add('rec');
   const rt = document.getElementById('rec-timer');
-  rt.classList.add('on'); rt.textContent = '00:00';
+  rt.classList.add('on');
+  rt.textContent = '00:00';
   const t0 = Date.now();
   recTimerInterval = setInterval(() => {
     const s = Math.floor((Date.now() - t0) / 1000);
@@ -1154,30 +1130,16 @@ document.getElementById('r-record').addEventListener('click', async () => {
   }, 1000);
 });
 
+ange', () => {
+
 function stopRecording() {
   clearInterval(recCanvasInterval);
   recCanvasInterval = null;
   if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-    mediaRecorder.stop(); // simple stop — onstop handles the rest
+    mediaRecorder.stop();
   }
   stopPlayback();
 }
-
-
-document.getElementById('bg-mode').addEventListener('change', () => {
-  const v = document.getElementById('bg-mode').value;
-  document.getElementById('stage').style.background = v === 'transparent' ? 'rgba(0,0,0,0)' : '#00FF00';
-  // reset checkerboard pattern for transparent preview
-  if (v === 'transparent') {
-    document.getElementById('stage').style.backgroundImage = 'linear-gradient(45deg,#1a1a1a 25%,transparent 25%),linear-gradient(-45deg,#1a1a1a 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#1a1a1a 75%),linear-gradient(-45deg,transparent 75%,#1a1a1a 75%)';
-    document.getElementById('stage').style.backgroundSize = '20px 20px';
-    document.getElementById('stage').style.backgroundPosition = '0 0,0 10px,10px -10px,-10px 0';
-  } else {
-    document.getElementById('stage').style.backgroundImage = 'none';
-    document.getElementById('stage').style.background = '#00FF00';
-  }
-  cueCache = {}; // clear cache so next draw uses correct bg
-});
 
 // init
 goTab('setup');
