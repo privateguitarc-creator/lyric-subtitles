@@ -75,7 +75,7 @@ button.grn:hover:not(:disabled) { background:#145e38; }
 #export-progress.on { display:inline; }
 
 /* LINE SPEEDS PANEL */
-#line-speeds-panel { background:#080818; border-top:1px solid #0f3460; padding:4px 8px; max-height:150px; overflow-y:auto; flex-shrink:0; display:none; }
+#line-speeds-panel { background:#080818; border-top:1px solid #0f3460; padding:4px 8px; max-height:180px; overflow-y:auto; flex-shrink:0; display:none; }
 #line-speeds-panel .hint { font-size:0.62rem; color:#444; margin-bottom:3px; text-transform:uppercase; letter-spacing:0.3px; }
 
 /* STAGE */
@@ -122,7 +122,7 @@ canvas { display:none; }
     <div class="sl"><label>Word ms</label><input type="range" id="s-wsp" min="80" max="1500" value="350" step="20" style="width:90px;"><span class="vl" id="s-wsp-v">350</span></div>
     <div class="sl"><label>Char ms</label><input type="range" id="s-csp" min="20" max="800" value="100" step="10" style="width:90px;"><span class="vl" id="s-csp-v">100</span></div>
     <div class="sl"><label>Pause</label><input type="range" id="s-cpause" min="0" max="3000" value="0" step="50" style="width:90px;"><span class="vl" id="s-cpause-v">0ms</span></div>
-    <div class="sl"><label>Font</label><input type="range" id="s-font" min="2" max="10" value="5.5" step="0.25" style="width:80px;"><span class="vl" id="s-font-v">5.5vw</span></div>
+    <div class="sl"><label>Font</label><input type="range" id="s-font" min="0.5" max="12" value="5.5" step="0.25" style="width:80px;"><span class="vl" id="s-font-v">5.5vw</span></div>
   </div>
   <div class="row"><button id="setup-go">Next → Tap Sync</button><span id="setup-err" style="font-size:0.76rem;color:#e94560;"></span></div>
 </div>
@@ -164,13 +164,17 @@ canvas { display:none; }
       <div class="sl"><label>Word ms</label><input type="range" id="r-wsp" min="80" max="1500" value="350" step="20" style="width:80px;"><span class="vl" id="r-wsp-v">350</span></div>
       <div class="sl"><label>Char ms</label><input type="range" id="r-csp" min="20" max="800" value="100" step="10" style="width:80px;"><span class="vl" id="r-csp-v">100</span></div>
       <div class="sl"><label>Pause</label><input type="range" id="r-cpause" min="0" max="3000" value="0" step="50" style="width:75px;"><span class="vl" id="r-cpause-v">0ms</span></div>
-      <div class="sl"><label>Font</label><input type="range" id="r-font" min="2" max="10" value="5.5" step="0.25" style="width:75px;"><span class="vl" id="r-font-v">5.5vw</span></div>
+      <div class="sl"><label>Font</label><input type="range" id="r-font" min="0.5" max="12" value="5.5" step="0.25" style="width:75px;"><span class="vl" id="r-font-v">5.5vw</span></div>
       <div class="sl" style="margin-left:8px;border-left:1px solid #1a3a6a;padding-left:8px;">
         <label>Video Size</label>
         <input type="range" id="r-vidsize" min="30" max="100" value="100" step="5" style="width:75px;">
         <span class="vl" id="r-vidsize-v">100%</span>
       </div>
       <button id="r-reset-pos" class="sec" style="font-size:0.7rem;padding:4px 8px;" title="Reset subtitle position to center">⊕ Reset Pos</button>
+    </div>
+    <div id="ctrl-row2" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+      <div class="sl"><label>Line Gap</label><input type="range" id="r-lspacing" min="0.8" max="3" value="1.25" step="0.05" style="width:80px;"><span class="vl" id="r-lspacing-v">1.25</span></div>
+      <div class="sl"><label>Word Gap</label><input type="range" id="r-wspacing" min="0" max="1.5" value="0" step="0.05" style="width:80px;"><span class="vl" id="r-wspacing-v">0em</span></div>
     </div>
     <div id="seek-wrap">
       <span style="font-size:0.7rem;color:#555;">0:00</span>
@@ -333,11 +337,15 @@ document.getElementById('setup-go').addEventListener('click', () => {
   let cur = [];
   raw.split('\n').forEach(line => {
     const t = line.trim();
-    if (!t) { if (cur.length) { cues.push({lines:[...cur],startTime:null,endTime:null,lineSpeeds:[]}); cur=[]; } }
+    if (!t) { if (cur.length) { cues.push({lines:[...cur],startTime:null,endTime:null,lineSpeeds:[],posX:50,posY:85}); cur=[]; } }
     else cur.push(t);
   });
-  if (cur.length) cues.push({lines:[...cur],startTime:null,endTime:null,lineSpeeds:[]});
-  cues.forEach(c => { while(c.lineSpeeds.length<c.lines.length) c.lineSpeeds.push(null); });
+  if (cur.length) cues.push({lines:[...cur],startTime:null,endTime:null,lineSpeeds:[],posX:50,posY:85});
+  cues.forEach(c => {
+    while(c.lineSpeeds.length<c.lines.length) c.lineSpeeds.push(null);
+    if(c.posX===undefined) c.posX=50;
+    if(c.posY===undefined) c.posY=85;
+  });
   initTapSync();
   goTab('sync');
 });
@@ -455,6 +463,8 @@ function finalizeCues() {
     c.endTime=(i+1<cues.length&&cues[i+1].startTime!==null)?cues[i+1].startTime:null;
     if(!c.lineSpeeds) c.lineSpeeds=[];
     while(c.lineSpeeds.length<c.lines.length) c.lineSpeeds.push(null);
+    if(c.posX===undefined) c.posX=50;
+    if(c.posY===undefined) c.posY=85;
   });
 }
 
@@ -464,6 +474,11 @@ function syncControls() {
     if(fe&&te) te.value=fe.value;
   });
   updateRecLabels();
+  // reset spacing to defaults
+  document.getElementById('r-lspacing').value=1.25;
+  document.getElementById('r-lspacing-v').textContent='1.25';
+  document.getElementById('r-wspacing').value=0;
+  document.getElementById('r-wspacing-v').textContent='0em';
 }
 
 // ══════════════════════════════════════════
@@ -479,6 +494,20 @@ function updateRecLabels() {
     document.getElementById(vid).textContent=e.target.value+suf;
     if(id==='r-font') document.querySelectorAll('.ch').forEach(c=>c.style.fontSize=e.target.value+'vw');
   });
+});
+
+// line spacing
+document.getElementById('r-lspacing').addEventListener('input', e => {
+  const v = e.target.value;
+  document.getElementById('r-lspacing-v').textContent = v;
+  document.getElementById('stage-inner').style.lineHeight = v;
+});
+
+// word spacing
+document.getElementById('r-wspacing').addEventListener('input', e => {
+  const v = e.target.value;
+  document.getElementById('r-wspacing-v').textContent = v + 'em';
+  document.getElementById('stage-inner').style.wordSpacing = v + 'em';
 });
 
 // ══════════════════════════════════════════
@@ -500,29 +529,42 @@ document.getElementById('r-vidsize').addEventListener('input', e => {
 let subX = 50, subY = 85; // percent of stage (default: center, near bottom)
 let isDragging = false, dragStartX, dragStartY, dragStartSubX, dragStartSubY;
 
-const SNAP_THRESHOLD = 3; // percent — snap to center within 3%
+const SNAP_THRESHOLD = 3;
 
-function positionSubtitle() {
+function getCuePos(cIdx) {
+  // return pos for a specific cue index, fallback to global subX/subY
+  if (cIdx >= 0 && cues[cIdx]) return { x: cues[cIdx].posX, y: cues[cIdx].posY };
+  return { x: subX, y: subY };
+}
+
+function positionSubtitle(cIdx) {
   const si = document.getElementById('stage-inner');
   const sw = document.getElementById('stage');
-  const siW = si.offsetWidth, siH = si.offsetHeight;
+  if (!sw || !si) return;
+  const siW = si.offsetWidth||0, siH = si.offsetHeight||0;
   const swW = sw.offsetWidth, swH = sw.offsetHeight;
 
-  // snap to center if close
-  const snapH = Math.abs(subX - 50) < SNAP_THRESHOLD;
-  const snapV = Math.abs(subY - 50) < SNAP_THRESHOLD;
-  const dispX = snapH ? 50 : subX;
-  const dispY = snapV ? 50 : subY;
+  // use cue-specific position if available
+  const useIdx = (cIdx !== undefined) ? cIdx : activeCueIdx;
+  const pos = getCuePos(useIdx);
+  let x = isDragging ? subX : pos.x;
+  let y = isDragging ? subY : pos.y;
 
-  si.style.left = Math.max(0, Math.min(swW-siW, (dispX/100)*swW - siW/2)) + 'px';
-  si.style.top  = Math.max(0, Math.min(swH-siH, (dispY/100)*swH - siH/2)) + 'px';
+  // snap to center when dragging
+  if (isDragging) {
+    if (Math.abs(x-50) < SNAP_THRESHOLD) x = 50;
+    if (Math.abs(y-50) < SNAP_THRESHOLD) y = 50;
+  }
 
-  // show/hide guides
-  const nearH = Math.abs(subX - 50) < SNAP_THRESHOLD + 5;
-  const nearV = Math.abs(subY - 50) < SNAP_THRESHOLD + 5;
-  document.getElementById('guide-v').style.display = (isDragging && nearH) ? 'block' : 'none';
-  document.getElementById('guide-h').style.display = (isDragging && nearV) ? 'block' : 'none';
-  document.getElementById('guide-center-dot').style.display = (isDragging && nearH && nearV) ? 'block' : 'none';
+  si.style.left = Math.max(0, Math.min(swW-siW, (x/100)*swW - siW/2)) + 'px';
+  si.style.top  = Math.max(0, Math.min(swH-siH, (y/100)*swH - siH/2)) + 'px';
+
+  // guides
+  const nearH = isDragging && Math.abs(subX-50) < SNAP_THRESHOLD+5;
+  const nearV = isDragging && Math.abs(subY-50) < SNAP_THRESHOLD+5;
+  document.getElementById('guide-v').style.display = nearH ? 'block':'none';
+  document.getElementById('guide-h').style.display = nearV ? 'block':'none';
+  document.getElementById('guide-center-dot').style.display = (nearH&&nearV) ? 'block':'none';
 }
 
 document.getElementById('stage-inner').addEventListener('mousedown', e => {
@@ -542,15 +584,23 @@ document.addEventListener('mousemove', e => {
   positionSubtitle();
 });
 document.addEventListener('mouseup', () => {
+  if (!isDragging) return;
   isDragging = false;
   document.getElementById('stage-inner').classList.remove('dragging');
-  // hide guides
   document.getElementById('guide-v').style.display='none';
   document.getElementById('guide-h').style.display='none';
   document.getElementById('guide-center-dot').style.display='none';
   // snap if close
   if(Math.abs(subX-50)<SNAP_THRESHOLD) subX=50;
   if(Math.abs(subY-50)<SNAP_THRESHOLD) subY=50;
+  // SAVE position to current cue
+  if (activeCueIdx >= 0 && cues[activeCueIdx]) {
+    cues[activeCueIdx].posX = subX;
+    cues[activeCueIdx].posY = subY;
+  } else {
+    // save to ALL cues if no cue active
+    cues.forEach(c => { c.posX=subX; c.posY=subY; });
+  }
   positionSubtitle();
 });
 
@@ -568,12 +618,15 @@ document.addEventListener('touchmove', e => {
   positionSubtitle();
 }, {passive:true});
 document.addEventListener('touchend', ()=>{
+  if(!isDragging) return;
   isDragging=false;
   document.getElementById('guide-v').style.display='none';
   document.getElementById('guide-h').style.display='none';
   document.getElementById('guide-center-dot').style.display='none';
   if(Math.abs(subX-50)<SNAP_THRESHOLD) subX=50;
   if(Math.abs(subY-50)<SNAP_THRESHOLD) subY=50;
+  if(activeCueIdx>=0 && cues[activeCueIdx]){ cues[activeCueIdx].posX=subX; cues[activeCueIdx].posY=subY; }
+  else cues.forEach(c=>{c.posX=subX;c.posY=subY;});
   positionSubtitle();
 });
 
@@ -618,6 +671,12 @@ function buildStage() {
 function showCue(idx) {
   document.querySelectorAll('.cue-div').forEach((el,i)=>{el.classList.toggle('on',i===idx);el.style.display=i===idx?'block':'none';});
   activeCueIdx=idx;
+  // load this cue's saved position
+  if(idx>=0 && cues[idx]){
+    subX = cues[idx].posX !== undefined ? cues[idx].posX : 50;
+    subY = cues[idx].posY !== undefined ? cues[idx].posY : 85;
+    requestAnimationFrame(()=>positionSubtitle(idx));
+  }
 }
 function hideCue() {
   document.querySelectorAll('.cue-div').forEach(el=>{el.classList.remove('on');el.style.display='none';});
@@ -629,11 +688,12 @@ function clearHL() { document.querySelectorAll('.ch').forEach(c=>c.classList.rem
 // LINE SPEEDS
 // ══════════════════════════════════════════
 function getSpeedLabel(ms) {
-  if(ms<=80) return '⚡ Very Fast';
-  if(ms<=160) return '🔥 Fast';
-  if(ms<=300) return '▶ Normal';
-  if(ms<=600) return '🐢 Slow';
-  return '🐌 Very Slow';
+  if(ms<=80)   return '⚡ Very Fast';
+  if(ms<=160)  return '🔥 Fast';
+  if(ms<=300)  return '▶ Normal';
+  if(ms<=600)  return '🐢 Slow';
+  if(ms<=1000) return '🐌 Very Slow';
+  return '🐌🐌 Ultra Slow';
 }
 
 function buildLineSpeeds() {
@@ -650,7 +710,7 @@ function buildLineSpeeds() {
 
     cue.lines.forEach((line, li) => {
       const spd = cue.lineSpeeds[li] !== null ? cue.lineSpeeds[li] : defSpd;
-      const inv = 1240 - spd;
+      const inv = 1540 - spd; // inverted: 1540 = max(1500)+min(40)
 
       const row = document.createElement('div');
       row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:3px 4px;border-bottom:1px solid #0f0f22;';
@@ -703,12 +763,62 @@ function buildLineSpeeds() {
       row.appendChild(timeInp);
 
       // ── lyric text (click to jump) ──
+      const txtWrap = document.createElement('span');
+      txtWrap.style.cssText = 'display:flex;align-items:center;gap:3px;width:180px;flex-shrink:0;';
+
       const txt = document.createElement('span');
-      txt.style.cssText = 'font-size:0.74rem;color:#ccc;width:160px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;cursor:pointer;';
+      txt.style.cssText = 'font-size:0.74rem;color:#ccc;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;';
       txt.title = 'Click to jump preview here';
       txt.textContent = line;
       txt.addEventListener('click', () => jumpToCue(ci));
-      row.appendChild(txt);
+      txtWrap.appendChild(txt);
+
+      // ── edit button ──
+      const editBtn = document.createElement('button');
+      editBtn.textContent = '✏️';
+      editBtn.title = 'Edit lyric text';
+      editBtn.style.cssText = 'font-size:0.65rem;padding:1px 4px;background:#1a3a6a;border:1px solid #2a5a9a;color:#aaa;border-radius:3px;cursor:pointer;flex-shrink:0;';
+      editBtn.addEventListener('click', () => {
+        // replace span with input
+        const inp = document.createElement('input');
+        inp.type = 'text';
+        inp.value = cues[ci].lines[li];
+        inp.style.cssText = 'font-size:0.74rem;color:#fff;background:#0f3460;border:1px solid #e94560;border-radius:3px;padding:2px 5px;outline:none;flex:1;width:120px;';
+        txtWrap.replaceChild(inp, txt);
+        editBtn.textContent = '✓';
+        editBtn.title = 'Save';
+        editBtn.style.background = '#1a5a2a';
+        editBtn.style.borderColor = '#2ecc71';
+        editBtn.style.color = '#2ecc71';
+        inp.focus(); inp.select();
+
+        const save = () => {
+          const newVal = inp.value.trim() || cues[ci].lines[li];
+          cues[ci].lines[li] = newVal;
+          txt.textContent = newVal;
+          txtWrap.replaceChild(txt, inp);
+          editBtn.textContent = '✏️';
+          editBtn.style.background = '#1a3a6a';
+          editBtn.style.borderColor = '#2a5a9a';
+          editBtn.style.color = '#aaa';
+          editBtn.title = 'Edit lyric text';
+          buildStage(); // rebuild stage with new text
+        };
+        inp.addEventListener('keydown', e => {
+          if (e.key === 'Enter') { e.preventDefault(); save(); }
+          if (e.key === 'Escape') {
+            txtWrap.replaceChild(txt, inp);
+            editBtn.textContent = '✏️';
+            editBtn.style.background = '#1a3a6a';
+            editBtn.style.borderColor = '#2a5a9a';
+            editBtn.style.color = '#aaa';
+          }
+        });
+        inp.addEventListener('blur', save);
+        editBtn.onclick = (e) => { e.stopPropagation(); save(); };
+      });
+      txtWrap.appendChild(editBtn);
+      row.appendChild(txtWrap);
 
       // ── slow emoji ──
       const sl1 = document.createElement('span');
@@ -728,10 +838,13 @@ function buildLineSpeeds() {
       sl2.textContent = '⚡'; sl2.style.cssText = 'font-size:0.6rem;flex-shrink:0;';
       row.appendChild(sl2);
 
-      // ── ms label ──
-      const msLbl = document.createElement('span');
-      msLbl.style.cssText = 'font-size:0.72rem;color:#e94560;font-weight:700;min-width:40px;text-align:right;flex-shrink:0;';
-      msLbl.textContent = spd+'ms';
+      // ── ms input (editable) ──
+      const msLbl = document.createElement('input');
+      msLbl.type = 'number';
+      msLbl.min = 40; msLbl.max = 1500; msLbl.step = 10;
+      msLbl.value = spd;
+      msLbl.title = 'Speed in ms — edit directly, Enter/Tab to next';
+      msLbl.style.cssText = 'width:52px;font-size:0.72rem;color:#e94560;font-weight:700;background:#0f3460;border:1px solid #e94560;border-radius:3px;padding:2px 4px;outline:none;flex-shrink:0;text-align:center;';
       row.appendChild(msLbl);
 
       // ── speed emoji label ──
@@ -752,18 +865,36 @@ function buildLineSpeeds() {
       delBtn.style.cssText = 'font-size:0.6rem;padding:2px 5px;flex-shrink:0;background:#3a0f0f;border:1px solid #e94560;color:#e94560;border-radius:4px;cursor:pointer;';
       row.appendChild(delBtn);
 
-      // slider listener
+      // slider → update ms input + label
       slider.addEventListener('input', () => {
-        const v = parseInt(slider.value), actual = 1240 - v;
+        const v = parseInt(slider.value), actual = 1540 - v;
         cues[+slider.dataset.ci].lineSpeeds[+slider.dataset.li] = actual;
-        msLbl.textContent = actual+'ms'; spdLbl.textContent = getSpeedLabel(actual);
+        msLbl.value = actual; spdLbl.textContent = getSpeedLabel(actual);
+      });
+
+      // ms input → update slider + label (Enter/Tab moves to next ms input)
+      msLbl.addEventListener('input', () => {
+        const v = Math.max(40, Math.min(1500, parseInt(msLbl.value)||40));
+        cues[ci].lineSpeeds[li] = v;
+        slider.value = 1540 - v;
+        spdLbl.textContent = getSpeedLabel(v);
+      });
+      msLbl.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === 'Tab') {
+          e.preventDefault();
+          const allMs = Array.from(list.querySelectorAll('input[type=number]'));
+          const idx = allMs.indexOf(msLbl);
+          const next = allMs[idx + (e.shiftKey ? -1 : 1)];
+          if (next) next.focus();
+          else if (e.key === 'Enter') msLbl.blur();
+        }
       });
 
       // reset listener
       resetBtn.addEventListener('click', () => {
         const def = parseInt(document.getElementById('r-wsp').value)||350;
         cues[+resetBtn.dataset.ci].lineSpeeds[+resetBtn.dataset.li] = null;
-        slider.value = 1240-def; msLbl.textContent = def+'ms'; spdLbl.textContent = getSpeedLabel(def);
+        slider.value = 1540-def; msLbl.value = def; spdLbl.textContent = getSpeedLabel(def);
       });
 
       // delete listener
@@ -963,10 +1094,13 @@ function drawCanvas() {
   const cueDiv=stageInner.querySelector(`.cue-div[data-cue="${activeCueIdx}"]`);
   if(!cueDiv||!cueDiv.classList.contains('on')) return;
   const fontPx=Math.round(parseFloat(document.getElementById('r-font').value)/100*W);
+  const lineSpacingMult = parseFloat(document.getElementById('r-lspacing').value)||1.25;
+  const wordSpacingEm  = parseFloat(document.getElementById('r-wspacing').value)||0;
+  const wordSpacingPx  = wordSpacingEm * fontPx;
   ctx.font=`900 ${fontPx}px "Arial Black",Arial,sans-serif`;
   ctx.textAlign='center'; ctx.textBaseline='middle';
   const lines=Array.from(cueDiv.querySelectorAll('.sl-line'));
-  const lineH=fontPx*1.28, totalH=lineH*lines.length;
+  const lineH=fontPx*lineSpacingMult, totalH=lineH*lines.length;
   // use dragged position (subX/subY as percent)
   const centerX = (typeof subX!=='undefined' ? subX : 50) / 100 * W;
   const centerY = (typeof subY!=='undefined' ? subY : 85) / 100 * H;
@@ -978,9 +1112,11 @@ function drawCanvas() {
     const scale=tw>W*0.95?(W*0.95)/tw:1;
     ctx.save();
     if(scale<1){ctx.translate(W/2,y);ctx.scale(scale,scale);ctx.translate(-W/2,-y);}
-    let x=centerX-tw/2;
+    // measure with word spacing applied
+    let totalWAdj=0; chars.forEach(ch=>{ totalWAdj+=ctx.measureText(ch.textContent).width; if(ch.textContent===' ') totalWAdj+=wordSpacingPx; });
+    let x=centerX-totalWAdj/2;
     chars.forEach(ch=>{
-      const txt=ch.textContent,cw=ctx.measureText(txt).width,cx=x+cw/2;
+      const txt=ch.textContent; let cw=ctx.measureText(txt).width; if(txt===' ') cw+=wordSpacingPx; const cx=x+cw/2;
       ctx.lineWidth=Math.max(8,Math.round(fontPx*0.14));
       ctx.strokeStyle='#000';
       ctx.shadowColor='rgba(0,0,0,0.7)'; ctx.shadowBlur=fontPx*0.1; ctx.shadowOffsetY=fontPx*0.04;
