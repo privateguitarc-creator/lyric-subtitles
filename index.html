@@ -197,11 +197,14 @@ canvas { display:none; }
 <div id="stage-wrap">
   <div id="stage">
     <video id="bg-video" playsinline muted></video>
-    <!-- alignment guides — shown when subtitle near center -->
-    <div id="guide-h" style="position:absolute;top:50%;left:0;right:0;height:1px;background:rgba(0,200,255,0.7);display:none;pointer-events:none;z-index:5;box-shadow:0 0 4px rgba(0,200,255,0.8);"></div>
-    <div id="guide-v" style="position:absolute;left:50%;top:0;bottom:0;width:1px;background:rgba(0,200,255,0.7);display:none;pointer-events:none;z-index:5;box-shadow:0 0 4px rgba(0,200,255,0.8);"></div>
-    <div id="guide-center-dot" style="position:absolute;top:50%;left:50%;width:10px;height:10px;border-radius:50%;background:rgba(0,200,255,0.9);transform:translate(-50%,-50%);display:none;pointer-events:none;z-index:5;"></div>
-    <div id="stage-inner"></div>
+    <!-- video-overlay: positioned exactly over video, subtitles live here -->
+    <div id="video-overlay" style="position:absolute;z-index:2;pointer-events:none;">
+      <!-- alignment guides -->
+      <div id="guide-h" style="position:absolute;top:50%;left:0;right:0;height:1px;background:rgba(0,200,255,0.7);display:none;pointer-events:none;z-index:5;box-shadow:0 0 4px rgba(0,200,255,0.8);"></div>
+      <div id="guide-v" style="position:absolute;left:50%;top:0;bottom:0;width:1px;background:rgba(0,200,255,0.7);display:none;pointer-events:none;z-index:5;box-shadow:0 0 4px rgba(0,200,255,0.8);"></div>
+      <div id="guide-center-dot" style="position:absolute;top:50%;left:50%;width:10px;height:10px;border-radius:50%;background:rgba(0,200,255,0.9);transform:translate(-50%,-50%);display:none;pointer-events:none;z-index:5;"></div>
+      <div id="stage-inner" style="pointer-events:all;"></div>
+    </div>
   </div>
 </div>
 
@@ -264,6 +267,7 @@ function fixStageHeight() {
   sw.style.height = h + 'px';
   document.getElementById('stage').style.height = h + 'px';
   if (typeof positionSubtitle === 'function') requestAnimationFrame(positionSubtitle);
+  requestAnimationFrame(updateVideoOverlay);
 }
 window.addEventListener('resize', fixStageHeight);
 
@@ -521,6 +525,8 @@ document.getElementById('r-vidsize').addEventListener('input', e => {
   bgv.style.height = pct + '%';
   bgv.style.top = ((100-pct)/2) + '%';
   bgv.style.left = ((100-pct)/2) + '%';
+  // update overlay to follow video
+  requestAnimationFrame(() => { updateVideoOverlay(); positionSubtitle(); });
 });
 
 // ══════════════════════════════════════════
@@ -538,7 +544,6 @@ function getCuePos(cIdx) {
 }
 
 function getVideoScreenRect() {
-  // Returns the actual display rect of the video within the stage (accounting for letterbox)
   const bgv = document.getElementById('bg-video');
   const sw  = document.getElementById('stage');
   if (!bgv || !sw || !bgv.videoWidth) {
@@ -552,36 +557,46 @@ function getVideoScreenRect() {
   return {x:vX,y:vY,w:vW,h:vH};
 }
 
+function updateVideoOverlay() {
+  // Position the video-overlay div to exactly cover the video display area
+  const vr = getVideoScreenRect();
+  const ov = document.getElementById('video-overlay');
+  if (!ov) return;
+  ov.style.left   = vr.x + 'px';
+  ov.style.top    = vr.y + 'px';
+  ov.style.width  = vr.w + 'px';
+  ov.style.height = vr.h + 'px';
+}
+
 function positionSubtitle(cIdx) {
   const si = document.getElementById('stage-inner');
-  const sw = document.getElementById('stage');
-  if (!sw || !si) return;
-  const siW = si.offsetWidth||0, siH = si.offsetHeight||0;
-  const swW = sw.offsetWidth, swH = sw.offsetHeight;
+  const ov = document.getElementById('video-overlay');
+  if (!ov || !si) return;
+  updateVideoOverlay(); // keep overlay in sync
+  const ovW = ov.offsetWidth  || 1;
+  const ovH = ov.offsetHeight || 1;
+  const siW = si.offsetWidth  || 0;
+  const siH = si.offsetHeight || 0;
 
-  let x, y;
+  // get position — % within the video overlay area
+  const useIdx = (cIdx !== undefined) ? cIdx : activeCueIdx;
+  const pos = getCuePos(useIdx);
+  let x = isDragging ? subX : pos.x;
+  let y = isDragging ? subY : pos.y;
+
+  // snap to center when dragging
   if (isDragging) {
-    // while dragging, use raw stage % directly
-    x = subX; y = subY;
     if (Math.abs(x-50) < SNAP_THRESHOLD) x = 50;
     if (Math.abs(y-50) < SNAP_THRESHOLD) y = 50;
-    si.style.left = Math.max(0, Math.min(swW-siW, (x/100)*swW - siW/2)) + 'px';
-    si.style.top  = Math.max(0, Math.min(swH-siH, (y/100)*swH - siH/2)) + 'px';
-  } else {
-    // use saved video-relative position, convert to screen coords
-    const useIdx = (cIdx !== undefined) ? cIdx : activeCueIdx;
-    const pos = getCuePos(useIdx);
-    const vr = getVideoScreenRect();
-    // pos.x/pos.y are % within the video display area
-    const screenX = vr.x + (pos.x/100)*vr.w;
-    const screenY = vr.y + (pos.y/100)*vr.h;
-    si.style.left = Math.max(0, Math.min(swW-siW, screenX - siW/2)) + 'px';
-    si.style.top  = Math.max(0, Math.min(swH-siH, screenY - siH/2)) + 'px';
   }
 
-  // guides (only while dragging, near center of stage)
-  const nearH = isDragging && Math.abs(subX-50) < SNAP_THRESHOLD+5;
-  const nearV = isDragging && Math.abs(subY-50) < SNAP_THRESHOLD+5;
+  // position within overlay (which = video area)
+  si.style.left = Math.max(0, Math.min(ovW-siW, (x/100)*ovW - siW/2)) + 'px';
+  si.style.top  = Math.max(0, Math.min(ovH-siH, (y/100)*ovH - siH/2)) + 'px';
+
+  // guides
+  const nearH = isDragging && Math.abs(x-50) < SNAP_THRESHOLD+5;
+  const nearV = isDragging && Math.abs(y-50) < SNAP_THRESHOLD+5;
   document.getElementById('guide-v').style.display  = nearH ? 'block':'none';
   document.getElementById('guide-h').style.display  = nearV ? 'block':'none';
   document.getElementById('guide-center-dot').style.display = (nearH&&nearV) ? 'block':'none';
@@ -596,11 +611,14 @@ document.getElementById('stage-inner').addEventListener('mousedown', e => {
 });
 document.addEventListener('mousemove', e => {
   if (!isDragging) return;
-  const sw = document.getElementById('stage');
-  const dx = (e.clientX - dragStartX) / sw.offsetWidth * 100;
-  const dy = (e.clientY - dragStartY) / sw.offsetHeight * 100;
-  subX = Math.max(5, Math.min(95, dragStartSubX + dx));
-  subY = Math.max(5, Math.min(95, dragStartSubY + dy));
+  // drag relative to video-overlay (= video area)
+  const ov = document.getElementById('video-overlay');
+  const ovW = ov ? ov.offsetWidth  : 1;
+  const ovH = ov ? ov.offsetHeight : 1;
+  const dx = (e.clientX - dragStartX) / ovW * 100;
+  const dy = (e.clientY - dragStartY) / ovH * 100;
+  subX = Math.max(2, Math.min(98, dragStartSubX + dx));
+  subY = Math.max(2, Math.min(98, dragStartSubY + dy));
   positionSubtitle();
 });
 document.addEventListener('mouseup', () => {
@@ -613,28 +631,12 @@ document.addEventListener('mouseup', () => {
   // snap if close
   if(Math.abs(subX-50)<SNAP_THRESHOLD) subX=50;
   if(Math.abs(subY-50)<SNAP_THRESHOLD) subY=50;
-  // Convert screen position to video-area-relative %
-  const _bgv = document.getElementById('bg-video');
-  const _sw  = document.getElementById('stage');
-  let vRelX = subX, vRelY = subY;
-  if (_bgv && _sw && _bgv.videoWidth) {
-    const swW=_sw.offsetWidth, swH=_sw.offsetHeight;
-    const vAspect = _bgv.videoWidth / _bgv.videoHeight;
-    const sAspect = swW / swH;
-    let vDispW, vDispH, vOffX=0, vOffY=0;
-    if (vAspect > sAspect) { vDispW=swW; vDispH=swW/vAspect; vOffY=(swH-vDispH)/2; }
-    else { vDispH=swH; vDispW=swH*vAspect; vOffX=(swW-vDispW)/2; }
-    // subX/subY are % of stage — convert to % of video display area
-    const screenX = (subX/100)*swW - vOffX;
-    const screenY = (subY/100)*swH - vOffY;
-    vRelX = Math.max(0, Math.min(100, screenX/vDispW*100));
-    vRelY = Math.max(0, Math.min(100, screenY/vDispH*100));
-  }
+  // subX/subY are already % of video-overlay = video area — save directly
   if (activeCueIdx >= 0 && cues[activeCueIdx]) {
-    cues[activeCueIdx].posX = vRelX;
-    cues[activeCueIdx].posY = vRelY;
+    cues[activeCueIdx].posX = subX;
+    cues[activeCueIdx].posY = subY;
   } else {
-    cues.forEach(c => { c.posX=vRelX; c.posY=vRelY; });
+    cues.forEach(c => { c.posX=subX; c.posY=subY; });
   }
   positionSubtitle();
 });
@@ -660,18 +662,8 @@ document.addEventListener('touchend', ()=>{
   document.getElementById('guide-center-dot').style.display='none';
   if(Math.abs(subX-50)<SNAP_THRESHOLD) subX=50;
   if(Math.abs(subY-50)<SNAP_THRESHOLD) subY=50;
-  // same video-relative conversion as mouseup
-  const _bgv2=document.getElementById('bg-video'), _sw2=document.getElementById('stage');
-  let vRelX2=subX, vRelY2=subY;
-  if(_bgv2&&_sw2&&_bgv2.videoWidth){
-    const swW=_sw2.offsetWidth,swH=_sw2.offsetHeight,vAsp=_bgv2.videoWidth/_bgv2.videoHeight,sAsp=swW/swH;
-    let vDW,vDH,vOX=0,vOY=0;
-    if(vAsp>sAsp){vDW=swW;vDH=swW/vAsp;vOY=(swH-vDH)/2;}else{vDH=swH;vDW=swH*vAsp;vOX=(swW-vDW)/2;}
-    vRelX2=Math.max(0,Math.min(100,((subX/100)*swW-vOX)/vDW*100));
-    vRelY2=Math.max(0,Math.min(100,((subY/100)*swH-vOY)/vDH*100));
-  }
-  if(activeCueIdx>=0&&cues[activeCueIdx]){cues[activeCueIdx].posX=vRelX2;cues[activeCueIdx].posY=vRelY2;}
-  else cues.forEach(c=>{c.posX=vRelX2;c.posY=vRelY2;});
+  if(activeCueIdx>=0&&cues[activeCueIdx]){cues[activeCueIdx].posX=subX;cues[activeCueIdx].posY=subY;}
+  else cues.forEach(c=>{c.posX=subX;c.posY=subY;});
   positionSubtitle();
 });
 
@@ -1092,7 +1084,7 @@ function startPlayback() {
   bgv.src=videoSrc;
   bgv.currentTime=bgv.currentTime||0;
   bgv.muted=false;
-  bgv.play().then(()=>{audioStartedAt=performance.now();audioStartOffset=bgv.currentTime;}).catch(()=>{});
+  bgv.play().then(()=>{audioStartedAt=performance.now();audioStartOffset=bgv.currentTime; requestAnimationFrame(updateVideoOverlay);}).catch(()=>{});
   bgv.onended=()=>{if(!isExporting)stopPlayback();};
   hideCue(); clearHL(); activeCueIdx=-1; unitIdx=0;
   setTimeout(()=>{isPlaying=true;hlNextAt=performance.now();rafId=requestAnimationFrame(rafLoop);},30);
@@ -1125,7 +1117,9 @@ function jumpToCue(ci) {
 const recCanvas=document.getElementById('rec-canvas');
 
 function drawCanvas() {
-  const ctx=recCanvas.getContext('2d');
+  const ctx=recCanvas.getContext('2d', {alpha:false});
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
   const W=recCanvas.width, H=recCanvas.height;
   const bgv=document.getElementById('bg-video');
   ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H);
@@ -1150,10 +1144,10 @@ function drawCanvas() {
   const lines=Array.from(cueDiv.querySelectorAll('.sl-line'));
   const lineH=fontPx*lineSpacingMult, totalH=lineH*lines.length;
   // use dragged position (subX/subY as percent)
-  // Position subtitle within the VIDEO area (not the full black canvas)
-  const cuePos = (activeCueIdx>=0 && cues[activeCueIdx]) ? cues[activeCueIdx] : {posX:subX,posY:subY};
-  const posXpct = (cuePos.posX !== undefined ? cuePos.posX : 50) / 100;
-  const posYpct = (cuePos.posY !== undefined ? cuePos.posY : 85) / 100;
+  // posX/posY are % within video area — map to canvas video rect
+  const cuePos = (activeCueIdx>=0 && cues[activeCueIdx]) ? cues[activeCueIdx] : {posX:50,posY:85};
+  const posXpct = ((cuePos.posX !== undefined ? cuePos.posX : 50)) / 100;
+  const posYpct = ((cuePos.posY !== undefined ? cuePos.posY : 85)) / 100;
   const centerX = videoDx + posXpct * videoDw;
   const centerY = videoDy + posYpct * videoDh;
   lines.forEach((ln,li)=>{
