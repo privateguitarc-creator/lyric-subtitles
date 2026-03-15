@@ -78,7 +78,7 @@ audio { width:100%; border-radius:5px; }
 
 /* STAGE */
 #stage-wrap { overflow:hidden; position:relative; flex:1; min-height:0; }
-#stage { background: repeating-linear-gradient(45deg, #1a1a1a 0px, #1a1a1a 10px, #222 10px, #222 20px); width:100%; height:100%; min-height:0; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+#stage { background:#00FF00; width:100%; height:100%; min-height:0; display:flex; align-items:center; justify-content:center; overflow:hidden; }
 #stage-inner { text-align:center; width:90%; line-height:1.25; }
 .cue-div { display:none; }
 .cue-div.on { display:block; }
@@ -717,35 +717,28 @@ function jumpToCue(idx) {
 // ══════════════════════════════════════════
 const recCanvas = document.getElementById('rec-canvas');
 
-// Keep a persistent canvas context with alpha enabled
-let _recCtx = null;
-function getRecCtx() {
-  if (!_recCtx || _recCtx.canvas !== recCanvas) {
-    _recCtx = recCanvas.getContext('2d', { alpha: true, willReadFrequently: false });
-  }
-  return _recCtx;
-}
-
 function drawCanvas() {
   if (!isRecording) return;
-  const ctx = getRecCtx();
+  const ctx = recCanvas.getContext('2d');
   const W = recCanvas.width, H = recCanvas.height;
 
-  // Clear to fully transparent — no background color at all
-  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#00FF00';
+  ctx.fillRect(0, 0, W, H);
 
-  if (activeCueIdx < 0) return; // transparent when no lyrics showing
+  if (activeCueIdx < 0) return;
 
   const cueDiv = stageInner.querySelector('.cue-div[data-cue="' + activeCueIdx + '"]');
   if (!cueDiv || !cueDiv.classList.contains('on')) return;
 
   const fontPx = Math.round(parseFloat(document.getElementById('r-font').value) / 100 * W);
+  // Use strokeText for crisp outline at any resolution — no pixelation
   ctx.font = '900 ' + fontPx + 'px "Arial Black", Arial, sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round';
 
   const lines = Array.from(cueDiv.querySelectorAll('.sl-line'));
-  const lineH = fontPx * 1.28;
+  const lineH = fontPx * 1.3;
   const totalH = lineH * lines.length;
 
   lines.forEach((line, li) => {
@@ -753,10 +746,10 @@ function drawCanvas() {
     const chars = Array.from(line.querySelectorAll('.ch'));
     const fullText = chars.map(c => c.textContent.toUpperCase()).join('');
     const tw = ctx.measureText(fullText).width;
-    const scale = tw > W * 0.88 ? (W * 0.88) / tw : 1;
+    const scale = tw > W*0.90 ? (W*0.90)/tw : 1;
 
     ctx.save();
-    if (scale < 1) { ctx.translate(W/2, y); ctx.scale(scale, scale); ctx.translate(-W/2, -y); }
+    if (scale < 1) { ctx.translate(W/2,y); ctx.scale(scale,scale); ctx.translate(-W/2,-y); }
 
     let x = W/2 - tw/2;
     chars.forEach(ch => {
@@ -764,20 +757,16 @@ function drawCanvas() {
       const cw  = ctx.measureText(txt).width;
       const cx  = x + cw/2;
       const isHL = ch.classList.contains('hl');
-      const outl = Math.max(4, Math.round(fontPx * 0.08));
 
-      // Draw thick black outline for readability over any video
-      ctx.fillStyle = 'rgba(0,0,0,0.95)';
-      for (let ox = -outl; ox <= outl; ox += Math.ceil(outl/2)) {
-        for (let oy = -outl; oy <= outl; oy += Math.ceil(outl/2)) {
-          if (ox === 0 && oy === 0) continue;
-          ctx.fillText(txt, cx+ox, y+oy);
-        }
-      }
+      // strokeText gives perfect vector-quality outline at any scale
+      ctx.lineWidth = Math.max(6, Math.round(fontPx * 0.12));
+      ctx.strokeStyle = '#000000';
+      ctx.strokeText(txt, cx, y);
 
-      // Main text — white or yellow
+      // Fill
       ctx.fillStyle = isHL ? '#FFE600' : '#FFFFFF';
       ctx.fillText(txt, cx, y);
+
       x += cw;
     });
     ctx.restore();
@@ -791,32 +780,33 @@ document.getElementById('r-record').addEventListener('click', () => {
   if (isRecording) { stopRecording(); return; }
   if (!cues.length) { alert('Load lyrics first!'); return; }
 
-  // Use 4K resolution for crisp text at any size
+  // 4K canvas — text stays sharp at any size
   const stageEl = document.getElementById('stage');
   const capW = Math.round(2160 * stageEl.offsetWidth / stageEl.offsetHeight);
   const capH = 2160;
   recCanvas.width  = capW;
   recCanvas.height = capH;
 
-  // IMPORTANT: get context with alpha BEFORE captureStream
-  const ctx0 = recCanvas.getContext('2d', { alpha: true });
-  ctx0.clearRect(0, 0, capW, capH); // fully transparent first frame
+  // Green first frame
+  const ctx0 = recCanvas.getContext('2d');
+  ctx0.fillStyle = '#00FF00';
+  ctx0.fillRect(0, 0, capW, capH);
 
-  // Capture BEFORE starting stream — ensures alpha channel is preserved
   const stream = recCanvas.captureStream(30);
 
-  // WebM VP9 — ONLY format that supports transparency
-  // MP4/H264 does NOT support alpha channel
-  const mimeType = 'video/webm;codecs=vp9';
-  if (!MediaRecorder.isTypeSupported(mimeType)) {
-    alert('Your browser does not support transparent video recording. Please use Chrome.');
-    return;
-  }
+  // MP4 first, fallback webm
+  const mimeType = [
+    'video/mp4;codecs=avc1',
+    'video/mp4',
+    'video/webm;codecs=vp9',
+    'video/webm'
+  ].find(t => MediaRecorder.isTypeSupported(t)) || 'video/webm';
+  const fileExt = mimeType.includes('mp4') ? 'mp4' : 'webm';
 
   recordedChunks = [];
   mediaRecorder = new MediaRecorder(stream, {
     mimeType,
-    videoBitsPerSecond: 20000000 // 20 Mbps for 4K quality
+    videoBitsPerSecond: 40000000  // 40 Mbps for 4K quality
   });
 
   mediaRecorder.ondataavailable = e => {
@@ -835,7 +825,7 @@ document.getElementById('r-record').addEventListener('click', () => {
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href = url;
-    a.download = 'lyrics-transparent.webm';
+    a.download = 'green-screen-4k.' + fileExt;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 15000);
   };
