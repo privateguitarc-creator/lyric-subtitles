@@ -89,7 +89,7 @@ button.grn:hover:not(:disabled) { background:#145e38; }
 .cue-div { display:none; }
 .cue-div.on { display:block; }
 .sl-line { display:block; white-space:nowrap; }
-.ch { display:inline; font-family:'Arial Black',Arial,sans-serif; font-weight:900; text-transform:uppercase; color:#fff; -webkit-text-stroke:2px #000; paint-order:stroke fill; transition:color 0.04s; }
+.ch { display:inline; font-family:'Arial Black',Arial,sans-serif; font-weight:900; text-transform:uppercase; color:#fff; text-shadow:1px 1px 0 #000,-1px 1px 0 #000,1px -1px 0 #000,-1px -1px 0 #000,0 2px 4px rgba(0,0,0,0.8); transition:color 0.04s; }
 .ch.hl { color:#FFE600; }
 .ch.sp { display:inline; -webkit-text-stroke:0; }
 
@@ -1117,13 +1117,20 @@ function drawCanvas() {
     let x=centerX-totalWAdj/2;
     chars.forEach(ch=>{
       const txt=ch.textContent; let cw=ctx.measureText(txt).width; if(txt===' ') cw+=wordSpacingPx; const cx=x+cw/2;
-      ctx.lineWidth=Math.max(8,Math.round(fontPx*0.14));
-      ctx.strokeStyle='#000';
-      ctx.shadowColor='rgba(0,0,0,0.7)'; ctx.shadowBlur=fontPx*0.1; ctx.shadowOffsetY=fontPx*0.04;
-      ctx.strokeText(txt,cx,y);
-      ctx.shadowColor='transparent'; ctx.shadowBlur=0; ctx.shadowOffsetY=0;
-      ctx.fillStyle=ch.classList.contains('hl')?'#FFE600':'#FFFFFF';
-      ctx.fillText(txt,cx,y);
+      // Clean outline: scale with canvas resolution but keep it thin
+      const strokeW = Math.max(1, Math.round(fontPx * 0.04)); // ~4% of font = clean outline
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = strokeW * 2; // strokeText draws outward + inward, so double
+      ctx.strokeStyle = '#000000';
+      ctx.strokeText(txt, cx, y);
+      // subtle drop shadow for readability on any background
+      ctx.shadowColor = 'rgba(0,0,0,0.6)';
+      ctx.shadowBlur = fontPx * 0.06;
+      ctx.shadowOffsetX = strokeW;
+      ctx.shadowOffsetY = strokeW;
+      ctx.fillStyle = ch.classList.contains('hl') ? '#FFE600' : '#FFFFFF';
+      ctx.fillText(txt, cx, y);
+      ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
       x+=cw;
     });
     ctx.restore();
