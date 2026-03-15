@@ -78,7 +78,7 @@ audio { width:100%; border-radius:5px; }
 /* STAGE */
 #stage-wrap { overflow:hidden; position:relative; flex:1; min-height:0; }
 #stage { background:#00FF00; width:100%; height:100%; min-height:0; display:flex; align-items:center; justify-content:center; overflow:hidden; }
-#stage-inner { text-align:center; width:100%; max-width:900px; line-height:1.25; padding:0 20px; }
+#stage-inner { text-align:center; width:90%; line-height:1.25; }
 .cue-div { display:none; }
 .cue-div.on { display:block; }
 .sl-line { display:block; white-space:nowrap; }
@@ -115,7 +115,7 @@ canvas { display:none; }
     <div class="sl"><label>Word ms</label><input type="range" id="s-wsp" min="80" max="1500" value="350" step="20" style="width:90px;"><span class="vl" id="s-wsp-v">350</span></div>
     <div class="sl"><label>Char ms</label><input type="range" id="s-csp" min="20" max="800" value="100" step="10" style="width:90px;"><span class="vl" id="s-csp-v">100</span></div>
     <div class="sl"><label>Cue pause</label><input type="range" id="s-cpause" min="0" max="3000" value="300" step="50" style="width:90px;"><span class="vl" id="s-cpause-v">300ms</span></div>
-    <div class="sl"><label>Font</label><input type="range" id="s-font" min="2" max="10" value="5.5" step="0.25" style="width:80px;"><span class="vl" id="s-font-v">5.5vw</span></div>
+    <div class="sl"><label>Font</label><input type="range" id="s-font" min="2" max="10" value="4" step="0.25" style="width:80px;"><span class="vl" id="s-font-v">4vw</span></div>
   </div>
   <div class="row"><button id="setup-go">Next → Tap Sync</button><span id="setup-err" style="font-size:0.76rem;color:#e94560;"></span></div>
 </div>
@@ -168,9 +168,9 @@ canvas { display:none; }
   </div>
 
 <!-- Stage lives outside panel so it fills remaining space -->
-<div id="line-speeds-panel" style="background:#080818;border-top:1px solid #0f3460;padding:4px 8px;max-height:130px;overflow-y:auto;display:none;flex-shrink:0;min-height:0;">
+<div id="line-speeds-panel" style="background:#080818;border-top:1px solid #0f3460;padding:4px 8px;max-height:130px;overflow-y:auto;flex-shrink:0;">
   <div style="font-size:0.62rem;color:#444;margin-bottom:3px;text-transform:uppercase;letter-spacing:0.3px;">⚡ Speed per line &nbsp;|&nbsp; 🐌 Left = Slow &nbsp; Right = Fast ⚡ &nbsp;|&nbsp; Click line to jump preview</div>
-  <div id="line-speeds-list"></div>
+  <div id="line-speeds-list"><span style="font-size:0.72rem;color:#333;">Load lyrics in Setup tab first</span></div>
 </div>
 <div id="stage-wrap">
   <div id="stage"><div id="stage-inner"></div></div>
@@ -210,15 +210,29 @@ function goTab(name) {
   document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-'+name));
   const sw = document.getElementById('stage-wrap');
   sw.style.display = name === 'record' ? 'block' : 'none';
+  if (name === 'record') requestAnimationFrame(() => requestAnimationFrame(fixStageHeight));
 }
 
 function fixStageHeight() {
-  // CSS flex handles this now — stage-wrap has flex:1
-  // Just ensure stage fills its wrapper
   const sw = document.getElementById('stage-wrap');
-  if (sw && sw.style.display !== 'none') {
-    stage.style.height = sw.offsetHeight + 'px';
-  }
+  if (!sw || sw.style.display === 'none') return;
+  // Measure all visible elements above stage-wrap
+  let usedH = 0;
+  // tabs
+  const tabs = document.getElementById('tabs');
+  if (tabs) usedH += tabs.getBoundingClientRect().height;
+  // ctrl-bar (inside panel-record)
+  const ctrlBar = document.getElementById('ctrl-bar');
+  if (ctrlBar) usedH += ctrlBar.getBoundingClientRect().height;
+  // seek wrap is inside ctrl-bar already counted
+  // line-speeds-panel if visible
+  const sp = document.getElementById('line-speeds-panel');
+  if (sp && sp.style.display !== 'none') usedH += sp.getBoundingClientRect().height;
+  // remaining
+  const remaining = window.innerHeight - usedH;
+  const h = Math.max(150, remaining);
+  sw.style.height = h + 'px';
+  stage.style.height = h + 'px';
 }
 window.addEventListener('resize', fixStageHeight);
 document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
@@ -476,7 +490,7 @@ document.getElementById('sync-go').addEventListener('click', () => {
   buildStage();
   buildLineSpeeds();
   goTab('record');
-  setTimeout(() => startPlayback(), 100);
+  setTimeout(() => { fixStageHeight(); startPlayback(); }, 150);
 });
 document.getElementById('sync-back').addEventListener('click', () => goTab('setup'));
 
@@ -509,8 +523,7 @@ function syncControlsToRecord() {
 function buildLineSpeeds() {
   const panel = document.getElementById('line-speeds-panel');
   const list  = document.getElementById('line-speeds-list');
-  if (!cues.length) { panel.style.display='none'; return; }
-  panel.style.display = 'block';
+  if (!cues.length) { list.innerHTML = '<span style="font-size:0.72rem;color:#333;">Load lyrics in Setup tab first</span>'; return; }
   list.innerHTML = '';
    // recompute after panel height changes
 
