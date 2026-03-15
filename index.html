@@ -537,6 +537,21 @@ function getCuePos(cIdx) {
   return { x: subX, y: subY };
 }
 
+function getVideoScreenRect() {
+  // Returns the actual display rect of the video within the stage (accounting for letterbox)
+  const bgv = document.getElementById('bg-video');
+  const sw  = document.getElementById('stage');
+  if (!bgv || !sw || !bgv.videoWidth) {
+    return { x:0, y:0, w:sw.offsetWidth, h:sw.offsetHeight };
+  }
+  const swW=sw.offsetWidth, swH=sw.offsetHeight;
+  const vAsp=bgv.videoWidth/bgv.videoHeight, sAsp=swW/swH;
+  let vW,vH,vX=0,vY=0;
+  if(vAsp>sAsp){vW=swW;vH=swW/vAsp;vY=(swH-vH)/2;}
+  else{vH=swH;vW=swH*vAsp;vX=(swW-vW)/2;}
+  return {x:vX,y:vY,w:vW,h:vH};
+}
+
 function positionSubtitle(cIdx) {
   const si = document.getElementById('stage-inner');
   const sw = document.getElementById('stage');
@@ -544,26 +559,31 @@ function positionSubtitle(cIdx) {
   const siW = si.offsetWidth||0, siH = si.offsetHeight||0;
   const swW = sw.offsetWidth, swH = sw.offsetHeight;
 
-  // use cue-specific position if available
-  const useIdx = (cIdx !== undefined) ? cIdx : activeCueIdx;
-  const pos = getCuePos(useIdx);
-  let x = isDragging ? subX : pos.x;
-  let y = isDragging ? subY : pos.y;
-
-  // snap to center when dragging
+  let x, y;
   if (isDragging) {
+    // while dragging, use raw stage % directly
+    x = subX; y = subY;
     if (Math.abs(x-50) < SNAP_THRESHOLD) x = 50;
     if (Math.abs(y-50) < SNAP_THRESHOLD) y = 50;
+    si.style.left = Math.max(0, Math.min(swW-siW, (x/100)*swW - siW/2)) + 'px';
+    si.style.top  = Math.max(0, Math.min(swH-siH, (y/100)*swH - siH/2)) + 'px';
+  } else {
+    // use saved video-relative position, convert to screen coords
+    const useIdx = (cIdx !== undefined) ? cIdx : activeCueIdx;
+    const pos = getCuePos(useIdx);
+    const vr = getVideoScreenRect();
+    // pos.x/pos.y are % within the video display area
+    const screenX = vr.x + (pos.x/100)*vr.w;
+    const screenY = vr.y + (pos.y/100)*vr.h;
+    si.style.left = Math.max(0, Math.min(swW-siW, screenX - siW/2)) + 'px';
+    si.style.top  = Math.max(0, Math.min(swH-siH, screenY - siH/2)) + 'px';
   }
 
-  si.style.left = Math.max(0, Math.min(swW-siW, (x/100)*swW - siW/2)) + 'px';
-  si.style.top  = Math.max(0, Math.min(swH-siH, (y/100)*swH - siH/2)) + 'px';
-
-  // guides
+  // guides (only while dragging, near center of stage)
   const nearH = isDragging && Math.abs(subX-50) < SNAP_THRESHOLD+5;
   const nearV = isDragging && Math.abs(subY-50) < SNAP_THRESHOLD+5;
-  document.getElementById('guide-v').style.display = nearH ? 'block':'none';
-  document.getElementById('guide-h').style.display = nearV ? 'block':'none';
+  document.getElementById('guide-v').style.display  = nearH ? 'block':'none';
+  document.getElementById('guide-h').style.display  = nearV ? 'block':'none';
   document.getElementById('guide-center-dot').style.display = (nearH&&nearV) ? 'block':'none';
 }
 
@@ -593,13 +613,28 @@ document.addEventListener('mouseup', () => {
   // snap if close
   if(Math.abs(subX-50)<SNAP_THRESHOLD) subX=50;
   if(Math.abs(subY-50)<SNAP_THRESHOLD) subY=50;
-  // SAVE position to current cue
+  // Convert screen position to video-area-relative %
+  const _bgv = document.getElementById('bg-video');
+  const _sw  = document.getElementById('stage');
+  let vRelX = subX, vRelY = subY;
+  if (_bgv && _sw && _bgv.videoWidth) {
+    const swW=_sw.offsetWidth, swH=_sw.offsetHeight;
+    const vAspect = _bgv.videoWidth / _bgv.videoHeight;
+    const sAspect = swW / swH;
+    let vDispW, vDispH, vOffX=0, vOffY=0;
+    if (vAspect > sAspect) { vDispW=swW; vDispH=swW/vAspect; vOffY=(swH-vDispH)/2; }
+    else { vDispH=swH; vDispW=swH*vAspect; vOffX=(swW-vDispW)/2; }
+    // subX/subY are % of stage — convert to % of video display area
+    const screenX = (subX/100)*swW - vOffX;
+    const screenY = (subY/100)*swH - vOffY;
+    vRelX = Math.max(0, Math.min(100, screenX/vDispW*100));
+    vRelY = Math.max(0, Math.min(100, screenY/vDispH*100));
+  }
   if (activeCueIdx >= 0 && cues[activeCueIdx]) {
-    cues[activeCueIdx].posX = subX;
-    cues[activeCueIdx].posY = subY;
+    cues[activeCueIdx].posX = vRelX;
+    cues[activeCueIdx].posY = vRelY;
   } else {
-    // save to ALL cues if no cue active
-    cues.forEach(c => { c.posX=subX; c.posY=subY; });
+    cues.forEach(c => { c.posX=vRelX; c.posY=vRelY; });
   }
   positionSubtitle();
 });
@@ -625,8 +660,18 @@ document.addEventListener('touchend', ()=>{
   document.getElementById('guide-center-dot').style.display='none';
   if(Math.abs(subX-50)<SNAP_THRESHOLD) subX=50;
   if(Math.abs(subY-50)<SNAP_THRESHOLD) subY=50;
-  if(activeCueIdx>=0 && cues[activeCueIdx]){ cues[activeCueIdx].posX=subX; cues[activeCueIdx].posY=subY; }
-  else cues.forEach(c=>{c.posX=subX;c.posY=subY;});
+  // same video-relative conversion as mouseup
+  const _bgv2=document.getElementById('bg-video'), _sw2=document.getElementById('stage');
+  let vRelX2=subX, vRelY2=subY;
+  if(_bgv2&&_sw2&&_bgv2.videoWidth){
+    const swW=_sw2.offsetWidth,swH=_sw2.offsetHeight,vAsp=_bgv2.videoWidth/_bgv2.videoHeight,sAsp=swW/swH;
+    let vDW,vDH,vOX=0,vOY=0;
+    if(vAsp>sAsp){vDW=swW;vDH=swW/vAsp;vOY=(swH-vDH)/2;}else{vDH=swH;vDW=swH*vAsp;vOX=(swW-vDW)/2;}
+    vRelX2=Math.max(0,Math.min(100,((subX/100)*swW-vOX)/vDW*100));
+    vRelY2=Math.max(0,Math.min(100,((subY/100)*swH-vOY)/vDH*100));
+  }
+  if(activeCueIdx>=0&&cues[activeCueIdx]){cues[activeCueIdx].posX=vRelX2;cues[activeCueIdx].posY=vRelY2;}
+  else cues.forEach(c=>{c.posX=vRelX2;c.posY=vRelY2;});
   positionSubtitle();
 });
 
@@ -1157,7 +1202,11 @@ document.getElementById('export-btn').addEventListener('click', async ()=>{
   if(!cues.length||!videoSrc){alert('Set up video and lyrics first!');return;}
 
   // set canvas to native video resolution
-  const capW=videoNativeW||1920, capH=videoNativeH||1080;
+  // Read resolution directly from the loaded video element (most reliable)
+  const _exportBgv = document.getElementById('bg-video');
+  const capW = (_exportBgv && _exportBgv.videoWidth  > 0) ? _exportBgv.videoWidth  : (videoNativeW||3840);
+  const capH = (_exportBgv && _exportBgv.videoHeight > 0) ? _exportBgv.videoHeight : (videoNativeH||2160);
+  console.log('Export resolution:', capW, 'x', capH);
   recCanvas.width=capW; recCanvas.height=capH;
   drawCanvas();
 
@@ -1170,7 +1219,7 @@ document.getElementById('export-btn').addEventListener('click', async ()=>{
   const ext=mimeType.startsWith('video/mp4')?'mp4':'webm';
 
   recordedChunks=[];
-  try{mediaRecorder=new MediaRecorder(stream,{mimeType,videoBitsPerSecond:8000000});}
+  try{mediaRecorder=new MediaRecorder(stream,{mimeType,videoBitsPerSecond:40000000}); // 40Mbps for 4K}
   catch(e){mediaRecorder=new MediaRecorder(stream);}
 
   mediaRecorder.ondataavailable=e=>{if(e.data?.size>0)recordedChunks.push(e.data);};
