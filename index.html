@@ -921,7 +921,10 @@ function startPlayback() {
     audioStartedAt = performance.now();
     audioStartOffset = 0;
   });
-  audioEl.onended = () => stopPlayback();
+  audioEl.onended = () => {
+    if (isRecording) stopRecording(); // stops recording AND playback
+    else stopPlayback();
+  };
 
   activeCueIdx = -2; // sentinel: force hideCue on first frame
   isPlaying = true;
@@ -949,6 +952,7 @@ const recCanvas = document.getElementById('rec-canvas');
 function drawCanvas() {
   if (!isRecording) return;
   const ctx = recCanvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
   const W = recCanvas.width, H = recCanvas.height;
   ctx.fillStyle = '#00FF00';
   ctx.fillRect(0,0,W,H);
@@ -970,7 +974,7 @@ function drawCanvas() {
   lines.forEach((line, li) => {
     const y = H/2 - totalH/2 + lineH*li + lineH/2;
     const chars = Array.from(line.querySelectorAll('.ch'));
-    const fullText = chars.map(c=>c.textContent).join('');
+    const fullText = chars.map(c=>c.textContent.toUpperCase()).join('');
     const tw = ctx.measureText(fullText).width;
     const scale = tw > W*0.88 ? (W*0.88)/tw : 1;
 
@@ -984,16 +988,26 @@ function drawCanvas() {
 
     let x = W/2 - tw/2;
     chars.forEach(ch => {
-      const txt = ch.textContent;
+      const txt = ch.textContent.toUpperCase();
       const cw = ctx.measureText(txt).width;
       const cx = x + cw/2;
-      // black outline — thicker at high res
-      const outl = Math.max(2, Math.round(fontPx * 0.06));
-      ctx.fillStyle = '#000';
-      [[-outl,-outl],[outl,-outl],[-outl,outl],[outl,outl],[0,outl*1.5]].forEach(([ox,oy]) => ctx.fillText(txt, cx+ox, y+oy));
-      // colored fill
-      ctx.fillStyle = ch.classList.contains('hl') ? '#FFE600' : '#FFFFFF';
+      const isHL = ch.classList.contains('hl');
+
+      // thick black outline for chroma key clarity
+      const outl = Math.max(3, Math.round(fontPx * 0.08));
+      ctx.fillStyle = '#000000';
+      // 8-directional outline for solid edge
+      for (let ox = -outl; ox <= outl; ox += Math.ceil(outl/2)) {
+        for (let oy = -outl; oy <= outl; oy += Math.ceil(outl/2)) {
+          if (ox === 0 && oy === 0) continue;
+          ctx.fillText(txt, cx + ox, y + oy);
+        }
+      }
+
+      // main fill — bright white or yellow
+      ctx.fillStyle = isHL ? '#FFE600' : '#FFFFFF';
       ctx.fillText(txt, cx, y);
+
       x += cw;
     });
     ctx.restore();
@@ -1054,7 +1068,7 @@ document.getElementById('r-record').addEventListener('click', async () => {
   };
 
   isRecording = true;
-  mediaRecorder.start(100);
+  mediaRecorder.start(50); // 50ms chunks for smoother recording
   startCanvasLoop();
 
   // Start audio directly (stage already built, don't rebuild)
@@ -1086,7 +1100,10 @@ document.getElementById('r-record').addEventListener('click', async () => {
 });
 
 function stopRecording() {
-  if (mediaRecorder?.state !== 'inactive') mediaRecorder.stop();
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.requestData(); // flush any remaining buffered data
+    mediaRecorder.stop();
+  }
   stopPlayback();
 }
 
