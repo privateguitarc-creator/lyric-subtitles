@@ -80,9 +80,12 @@ button.grn:hover:not(:disabled) { background:#145e38; }
 
 /* STAGE */
 #stage-wrap { flex:1; overflow:hidden; position:relative; min-height:0; }
-#stage { width:100%; height:100%; position:relative; background:#000; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+#stage { width:100%; height:100%; position:relative; background:#000; overflow:hidden; }
 #bg-video { position:absolute; top:0; left:0; width:100%; height:100%; object-fit:contain; z-index:0; }
-#stage-inner { position:relative; z-index:1; text-align:center; width:96%; line-height:1.25; pointer-events:none; }
+#stage-inner { position:absolute; z-index:2; text-align:center; line-height:1.25; cursor:move; }
+#stage-inner.dragging { user-select:none; }
+/* video size control */
+#video-size-wrap { display:flex; align-items:center; gap:6px; }
 .cue-div { display:none; }
 .cue-div.on { display:block; }
 .sl-line { display:block; white-space:nowrap; }
@@ -162,6 +165,12 @@ canvas { display:none; }
       <div class="sl"><label>Char ms</label><input type="range" id="r-csp" min="20" max="800" value="100" step="10" style="width:80px;"><span class="vl" id="r-csp-v">100</span></div>
       <div class="sl"><label>Pause</label><input type="range" id="r-cpause" min="0" max="3000" value="0" step="50" style="width:75px;"><span class="vl" id="r-cpause-v">0ms</span></div>
       <div class="sl"><label>Font</label><input type="range" id="r-font" min="2" max="10" value="5.5" step="0.25" style="width:75px;"><span class="vl" id="r-font-v">5.5vw</span></div>
+      <div class="sl" style="margin-left:8px;border-left:1px solid #1a3a6a;padding-left:8px;">
+        <label>Video Size</label>
+        <input type="range" id="r-vidsize" min="30" max="100" value="100" step="5" style="width:75px;">
+        <span class="vl" id="r-vidsize-v">100%</span>
+      </div>
+      <button id="r-reset-pos" class="sec" style="font-size:0.7rem;padding:4px 8px;" title="Reset subtitle position to center">⊕ Reset Pos</button>
     </div>
     <div id="seek-wrap">
       <span style="font-size:0.7rem;color:#555;">0:00</span>
@@ -243,6 +252,7 @@ function fixStageHeight() {
   const h = Math.max(80, window.innerHeight - used);
   sw.style.height = h + 'px';
   document.getElementById('stage').style.height = h + 'px';
+  if (typeof positionSubtitle === 'function') requestAnimationFrame(positionSubtitle);
 }
 window.addEventListener('resize', fixStageHeight);
 
@@ -465,6 +475,74 @@ function updateRecLabels() {
 });
 
 // ══════════════════════════════════════════
+// VIDEO SIZE CONTROL
+// ══════════════════════════════════════════
+document.getElementById('r-vidsize').addEventListener('input', e => {
+  const pct = e.target.value;
+  document.getElementById('r-vidsize-v').textContent = pct + '%';
+  const bgv = document.getElementById('bg-video');
+  bgv.style.width = pct + '%';
+  bgv.style.height = pct + '%';
+  bgv.style.top = ((100-pct)/2) + '%';
+  bgv.style.left = ((100-pct)/2) + '%';
+});
+
+// ══════════════════════════════════════════
+// DRAGGABLE SUBTITLE POSITION
+// ══════════════════════════════════════════
+let subX = 50, subY = 85; // percent of stage (default: center, near bottom)
+let isDragging = false, dragStartX, dragStartY, dragStartSubX, dragStartSubY;
+
+function positionSubtitle() {
+  const si = document.getElementById('stage-inner');
+  const sw = document.getElementById('stage');
+  const siW = si.offsetWidth, siH = si.offsetHeight;
+  const swW = sw.offsetWidth, swH = sw.offsetHeight;
+  si.style.left = Math.max(0, Math.min(swW-siW, (subX/100)*swW - siW/2)) + 'px';
+  si.style.top  = Math.max(0, Math.min(swH-siH, (subY/100)*swH - siH/2)) + 'px';
+}
+
+document.getElementById('stage-inner').addEventListener('mousedown', e => {
+  isDragging = true;
+  dragStartX = e.clientX; dragStartY = e.clientY;
+  dragStartSubX = subX; dragStartSubY = subY;
+  document.getElementById('stage-inner').classList.add('dragging');
+  e.preventDefault();
+});
+document.addEventListener('mousemove', e => {
+  if (!isDragging) return;
+  const sw = document.getElementById('stage');
+  const dx = (e.clientX - dragStartX) / sw.offsetWidth * 100;
+  const dy = (e.clientY - dragStartY) / sw.offsetHeight * 100;
+  subX = Math.max(5, Math.min(95, dragStartSubX + dx));
+  subY = Math.max(5, Math.min(95, dragStartSubY + dy));
+  positionSubtitle();
+});
+document.addEventListener('mouseup', () => {
+  isDragging = false;
+  document.getElementById('stage-inner').classList.remove('dragging');
+});
+
+// touch drag
+document.getElementById('stage-inner').addEventListener('touchstart', e => {
+  const t = e.touches[0];
+  isDragging = true; dragStartX=t.clientX; dragStartY=t.clientY;
+  dragStartSubX=subX; dragStartSubY=subY;
+}, {passive:true});
+document.addEventListener('touchmove', e => {
+  if (!isDragging) return;
+  const t = e.touches[0], sw = document.getElementById('stage');
+  subX = Math.max(5,Math.min(95, dragStartSubX+(t.clientX-dragStartX)/sw.offsetWidth*100));
+  subY = Math.max(5,Math.min(95, dragStartSubY+(t.clientY-dragStartY)/sw.offsetHeight*100));
+  positionSubtitle();
+}, {passive:true});
+document.addEventListener('touchend', ()=>{ isDragging=false; });
+
+document.getElementById('r-reset-pos').addEventListener('click', ()=>{
+  subX=50; subY=85; positionSubtitle();
+});
+
+// ══════════════════════════════════════════
 // BUILD STAGE
 // ══════════════════════════════════════════
 const stageInner = document.getElementById('stage-inner');
@@ -494,6 +572,8 @@ function buildStage() {
     });
     stageInner.appendChild(div);
   });
+  // position subtitle after building
+  requestAnimationFrame(positionSubtitle);
 }
 
 function showCue(idx) {
@@ -509,49 +589,88 @@ function clearHL() { document.querySelectorAll('.ch').forEach(c=>c.classList.rem
 // ══════════════════════════════════════════
 // LINE SPEEDS
 // ══════════════════════════════════════════
+function getSpeedLabel(ms) {
+  if(ms<=80) return '⚡ Very Fast';
+  if(ms<=160) return '🔥 Fast';
+  if(ms<=300) return '▶ Normal';
+  if(ms<=600) return '🐢 Slow';
+  return '🐌 Very Slow';
+}
+
 function buildLineSpeeds() {
   const panel=document.getElementById('line-speeds-panel');
   const list=document.getElementById('line-speeds-list');
   if(!cues.length){panel.style.display='none';return;}
   panel.style.display='block'; list.innerHTML='';
   const defSpd=parseInt(document.getElementById('r-wsp').value)||350;
+
   cues.forEach((cue,ci)=>{
     if(!cue.lineSpeeds) cue.lineSpeeds=[];
     while(cue.lineSpeeds.length<cue.lines.length) cue.lineSpeeds.push(null);
+
     cue.lines.forEach((line,li)=>{
       const spd=cue.lineSpeeds[li]!==null?cue.lineSpeeds[li]:defSpd;
       const inv=1240-spd;
+
       const row=document.createElement('div');
-      row.style.cssText='display:flex;align-items:center;gap:6px;padding:2px 4px;border-bottom:1px solid #0f0f22;cursor:pointer;';
+      row.style.cssText='display:flex;align-items:center;gap:8px;padding:3px 6px;border-bottom:1px solid #0f0f22;cursor:pointer;transition:background 0.1s;';
       row.addEventListener('mouseenter',()=>row.style.background='#0f0f28');
       row.addEventListener('mouseleave',()=>row.style.background='');
       row.addEventListener('click',e=>{if(e.target.tagName==='INPUT'||e.target.tagName==='BUTTON')return;jumpToCue(ci);});
-      row.innerHTML=`
-        <span style="font-size:0.65rem;color:#444;min-width:40px;font-weight:700;flex-shrink:0;">C${ci+1}L${li+1}</span>
-        <span style="font-size:0.74rem;color:#bbb;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${line}</span>
-        <span style="font-size:0.6rem;color:#555;flex-shrink:0;">🐌</span>
-        <input type="range" min="40" max="1200" value="${inv}" step="10" style="width:110px;flex-shrink:0;accent-color:#e94560;" data-ci="${ci}" data-li="${li}" class="spd-sl">
-        <span style="font-size:0.6rem;color:#555;flex-shrink:0;">⚡</span>
-        <span class="spd-ms" style="font-size:0.72rem;color:#e94560;font-weight:700;min-width:38px;text-align:right;flex-shrink:0;">${spd}ms</span>
-        <button class="sec spd-reset" data-ci="${ci}" data-li="${li}" style="font-size:0.58rem;padding:1px 5px;flex-shrink:0;">↺</button>`;
+
+      // C1L1 label
+      const lbl=document.createElement('span');
+      lbl.style.cssText='font-size:0.66rem;color:#555;min-width:40px;flex-shrink:0;font-weight:700;';
+      lbl.textContent='C'+(ci+1)+'L'+(li+1); row.appendChild(lbl);
+
+      // lyric text
+      const txt=document.createElement('span');
+      txt.style.cssText='font-size:0.76rem;color:#ccc;width:200px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;';
+      txt.title='Click to jump here'; txt.textContent=line; row.appendChild(txt);
+
+      // slow emoji
+      const sl1=document.createElement('span'); sl1.textContent='🐌'; sl1.style.cssText='font-size:0.62rem;flex-shrink:0;'; row.appendChild(sl1);
+
+      // slider (inverted: right=fast)
+      const slider=document.createElement('input');
+      slider.type='range'; slider.min=40; slider.max=1200; slider.value=inv; slider.step=10;
+      slider.style.cssText='flex:1;min-width:100px;max-width:180px;accent-color:#e94560;';
+      slider.dataset.ci=ci; slider.dataset.li=li; slider.className='spd-sl';
+      row.appendChild(slider);
+
+      // fast emoji
+      const sl2=document.createElement('span'); sl2.textContent='⚡'; sl2.style.cssText='font-size:0.62rem;flex-shrink:0;'; row.appendChild(sl2);
+
+      // ms label
+      const msLbl=document.createElement('span');
+      msLbl.style.cssText='font-size:0.72rem;color:#e94560;font-weight:700;min-width:40px;text-align:right;flex-shrink:0;';
+      msLbl.textContent=spd+'ms'; row.appendChild(msLbl);
+
+      // speed label
+      const spdLbl=document.createElement('span');
+      spdLbl.style.cssText='font-size:0.7rem;color:#2ecc71;font-weight:700;min-width:76px;flex-shrink:0;';
+      spdLbl.textContent=getSpeedLabel(spd); row.appendChild(spdLbl);
+
+      // reset btn
+      const resetBtn=document.createElement('button');
+      resetBtn.className='sec'; resetBtn.textContent='↺'; resetBtn.title='Reset to default';
+      resetBtn.style.cssText='font-size:0.6rem;padding:2px 5px;flex-shrink:0;';
+      resetBtn.dataset.ci=ci; resetBtn.dataset.li=li; row.appendChild(resetBtn);
+
+      slider.addEventListener('input',()=>{
+        const v=parseInt(slider.value),actual=1240-v;
+        cues[+slider.dataset.ci].lineSpeeds[+slider.dataset.li]=actual;
+        msLbl.textContent=actual+'ms'; spdLbl.textContent=getSpeedLabel(actual);
+      });
+      resetBtn.addEventListener('click',()=>{
+        const def=parseInt(document.getElementById('r-wsp').value)||350;
+        cues[+resetBtn.dataset.ci].lineSpeeds[+resetBtn.dataset.li]=null;
+        slider.value=1240-def; msLbl.textContent=def+'ms'; spdLbl.textContent=getSpeedLabel(def);
+      });
+
       list.appendChild(row);
     });
   });
-  list.querySelectorAll('.spd-sl').forEach(sl=>{
-    const msEl=sl.parentElement.querySelector('.spd-ms');
-    sl.addEventListener('input',()=>{
-      const v=parseInt(sl.value),actual=1240-v;
-      cues[+sl.dataset.ci].lineSpeeds[+sl.dataset.li]=actual;
-      msEl.textContent=actual+'ms';
-    });
-  });
-  list.querySelectorAll('.spd-reset').forEach(btn=>btn.addEventListener('click',()=>{
-    const ci=+btn.dataset.ci,li=+btn.dataset.li,def=parseInt(document.getElementById('r-wsp').value)||350;
-    cues[ci].lineSpeeds[li]=null;
-    const sl=list.querySelector(`.spd-sl[data-ci="${ci}"][data-li="${li}"]`);
-    const msEl=sl.parentElement.querySelector('.spd-ms');
-    sl.value=1240-def; msEl.textContent=def+'ms';
-  }));
   requestAnimationFrame(fixStageHeight);
 }
 
@@ -709,15 +828,18 @@ function drawCanvas() {
   ctx.textAlign='center'; ctx.textBaseline='middle';
   const lines=Array.from(cueDiv.querySelectorAll('.sl-line'));
   const lineH=fontPx*1.28, totalH=lineH*lines.length;
+  // use dragged position (subX/subY as percent)
+  const centerX = (typeof subX!=='undefined' ? subX : 50) / 100 * W;
+  const centerY = (typeof subY!=='undefined' ? subY : 85) / 100 * H;
   lines.forEach((ln,li)=>{
-    const y=H/2-totalH/2+lineH*li+lineH/2;
+    const y=centerY-totalH/2+lineH*li+lineH/2;
     const chars=Array.from(ln.querySelectorAll('.ch'));
     const fullTxt=chars.map(c=>c.textContent).join('');
     const tw=ctx.measureText(fullTxt).width;
     const scale=tw>W*0.95?(W*0.95)/tw:1;
     ctx.save();
     if(scale<1){ctx.translate(W/2,y);ctx.scale(scale,scale);ctx.translate(-W/2,-y);}
-    let x=W/2-tw/2;
+    let x=centerX-tw/2;
     chars.forEach(ch=>{
       const txt=ch.textContent,cw=ctx.measureText(txt).width,cx=x+cw/2;
       ctx.lineWidth=Math.max(8,Math.round(fontPx*0.14));
