@@ -1080,7 +1080,9 @@ document.getElementById('r-record').addEventListener('click', async () => {
     btn.textContent = '⏺ Record'; btn.classList.remove('rec');
     document.getElementById('rec-timer').classList.remove('on');
     if (!recordedChunks.length) { alert('Nothing recorded.'); return; }
-    // direct download — no conversion, fast
+    // Calculate total recorded bytes for debug
+    const totalBytes = recordedChunks.reduce((s, c) => s + c.size, 0);
+    console.log('Recording stopped. Chunks:', recordedChunks.length, 'Total bytes:', totalBytes);
     const blob = new Blob(recordedChunks, { type: mimeType });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
@@ -1090,7 +1092,7 @@ document.getElementById('r-record').addEventListener('click', async () => {
   };
 
   isRecording = true;
-  mediaRecorder.start(200);
+  mediaRecorder.start(50); // smaller chunks = less data lost at stop boundary
 
   // Canvas loop: use rAF but yield to browser between frames
   // This prevents it from blocking the highlight timer
@@ -1136,11 +1138,18 @@ document.getElementById('r-record').addEventListener('click', async () => {
 function stopRecording() {
   cancelAnimationFrame(recRafId);
   recRafId = null;
-  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-    try { mediaRecorder.requestData(); } catch(e) {}
-    mediaRecorder.stop();
-  }
   stopPlayback();
+  if (!mediaRecorder || mediaRecorder.state === 'inactive') return;
+  // requestData flushes the current buffer as a final chunk BEFORE stop
+  // We must wait for that dataavailable to fire before stopping
+  mediaRecorder.addEventListener('dataavailable', () => {
+    if (mediaRecorder.state !== 'inactive') {
+      mediaRecorder.stop();
+    }
+  }, { once: true });
+  try { mediaRecorder.requestData(); } catch(e) {
+    try { mediaRecorder.stop(); } catch(e2) {}
+  }
 }
 
 // init
