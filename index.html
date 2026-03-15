@@ -77,7 +77,7 @@ audio { width:100%; border-radius:5px; }
 #rec-timer.on { display:inline; }
 
 /* STAGE */
-#stage-wrap { overflow:hidden; position:relative; flex:1; min-height:0; background: repeating-conic-gradient(#1a1a1a 0% 25%, #222 0% 50%) 0 0 / 20px 20px; }
+#stage-wrap { overflow:hidden; position:relative; flex:1; min-height:0; background:#111; }
 #stage { background:transparent; width:100%; height:100%; min-height:0; display:flex; align-items:center; justify-content:center; overflow:hidden; }
 #stage-inner { text-align:center; width:90%; line-height:1.25; }
 .cue-div { display:none; }
@@ -885,7 +885,6 @@ function rafLoop() {
       showCueEl(wantCue);
     }
     activeCueIdx = wantCue;
-    lastHlState = ''; // force cache rebuild on cue change
   }
 
   // AUDIO-DRIVEN highlights: check each unit against current audio time
@@ -960,27 +959,18 @@ function stopPlayback() {
 // ══════════════════════════════════════════
 const recCanvas = document.getElementById('rec-canvas');
 
-// ── PRE-RENDERED CACHE ──
-// We render each cue to an offscreen canvas ONCE when highlight changes
-// Then drawCanvas just does a single drawImage — near-zero CPU
-let cueCache = {};       // cueIdx+hlState -> ImageBitmap
-let lastHlState = '';    // string representation of current highlights
-
-function getCueRender(cueIdx, hlState) {
-  const key = cueIdx + '|' + hlState;
-  if (cueCache[key]) return cueCache[key];
-
+function drawCanvas() {
+  if (!isRecording) return;
+  const ctx = recCanvas.getContext('2d', { alpha: true });
   const W = recCanvas.width, H = recCanvas.height;
-  const off = new OffscreenCanvas(W, H);
-  const ctx = off.getContext('2d', { alpha: true });
+  ctx.clearRect(0, 0, W, H);
+  if (activeCueIdx < 0) return;
 
-  ctx.clearRect(0, 0, W, H); // transparent background
-
-  const cueDiv = stageInner.querySelector(`.cue-div[data-cue="${cueIdx}"]`);
-  if (!cueDiv) return null;
+  const cueDiv = stageInner.querySelector('.cue-div[data-cue="' + activeCueIdx + '"]');
+  if (!cueDiv || !cueDiv.classList.contains('on')) return;
 
   const fontPx = Math.round(parseFloat(document.getElementById('r-font').value) / 100 * W);
-  ctx.font = `900 ${fontPx}px "Arial Black", Arial, sans-serif`;
+  ctx.font = '900 ' + fontPx + 'px "Arial Black", Arial, sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
 
@@ -989,76 +979,29 @@ function getCueRender(cueIdx, hlState) {
   const totalH = lineH * lines.length;
 
   lines.forEach((line, li) => {
-    const y = H/2 - totalH/2 + lineH * li + lineH/2;
+    const y = H/2 - totalH/2 + lineH*li + lineH/2;
     const chars = Array.from(line.querySelectorAll('.ch'));
     const fullText = chars.map(c => c.textContent.toUpperCase()).join('');
     const tw = ctx.measureText(fullText).width;
-    const scale = tw > W * 0.88 ? (W * 0.88) / tw : 1;
-
+    const scale = tw > W*0.88 ? (W*0.88)/tw : 1;
     ctx.save();
-    if (scale < 1) { ctx.translate(W/2, y); ctx.scale(scale, scale); ctx.translate(-W/2, -y); }
-
+    if (scale < 1) { ctx.translate(W/2,y); ctx.scale(scale,scale); ctx.translate(-W/2,-y); }
     let x = W/2 - tw/2;
     chars.forEach(ch => {
       const txt = ch.textContent.toUpperCase();
-      const cw  = ctx.measureText(txt).width;
-      const cx  = x + cw/2;
-      const isHL = ch.classList.contains('hl');
-      const outl = Math.max(3, Math.round(fontPx * 0.08));
-
-      // outline
+      const cw = ctx.measureText(txt).width;
+      const cx = x + cw/2;
+      const outl = Math.max(3, Math.round(fontPx * 0.07));
       ctx.fillStyle = '#000';
-      for (let ox = -outl; ox <= outl; ox += Math.ceil(outl/2)) {
-        for (let oy = -outl; oy <= outl; oy += Math.ceil(outl/2)) {
-          if (ox === 0 && oy === 0) continue;
-          ctx.fillText(txt, cx+ox, y+oy);
-        }
-      }
-      ctx.fillStyle = isHL ? '#FFE600' : '#FFFFFF';
+      [[-outl,-outl],[outl,-outl],[-outl,outl],[outl,outl],[0,outl]].forEach(([ox,oy]) => ctx.fillText(txt, cx+ox, y+oy));
+      ctx.fillStyle = ch.classList.contains('hl') ? '#FFE600' : '#FFFFFF';
       ctx.fillText(txt, cx, y);
       x += cw;
     });
     ctx.restore();
   });
-
-  // store as ImageBitmap for fastest possible drawImage
-  const bmp = off.transferToImageBitmap();
-  cueCache[key] = bmp;
-  // limit cache size
-  const keys = Object.keys(cueCache);
-  if (keys.length > 20) delete cueCache[keys[0]];
-  return bmp;
 }
 
-// Invalidate cache when highlights change (called from rafLoop)
-function invalidateCache() { cueCache = {}; }
-
-function drawCanvas() {
-  if (!isRecording) return;
-  const ctx = recCanvas.getContext('2d');
-  const W = recCanvas.width, H = recCanvas.height;
-
-  if (activeCueIdx < 0) {
-    ctx.clearRect(0, 0, W, H); // transparent when no lyrics
-    return;
-  }
-
-  // Build a hash of current highlight state for this cue
-  const units = stageUnits.filter(u => u.cueIdx === activeCueIdx);
-  const hlState = units.map(u => u.el.classList.contains('hl') ? '1' : '0').join('');
-
-  if (hlState !== lastHlState) {
-    lastHlState = hlState;
-    invalidateCache();
-  }
-
-  const bmp = getCueRender(activeCueIdx, hlState);
-  ctx.clearRect(0, 0, W, H);
-  if (bmp) ctx.drawImage(bmp, 0, 0);
-}
-
-
-;
 
 document.getElementById('r-record').addEventListener('click', () => {
   if (isRecording) { stopRecording(); return; }
@@ -1108,7 +1051,6 @@ document.getElementById('r-record').addEventListener('click', () => {
 
   // Start recording BEFORE starting playback
   isRecording = true;
-  cueCache = {}; lastHlState = '';
   mediaRecorder.start(100);
 
   // Canvas redraw loop — setInterval so it runs on system clock, not rAF
