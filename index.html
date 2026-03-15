@@ -76,8 +76,8 @@ audio { width:100%; border-radius:5px; }
 #rec-timer.on { display:inline; }
 
 /* STAGE */
-#stage-wrap { overflow:hidden; position:relative; background:#00FF00; }
-#stage { background:#00FF00; width:100%; height:100%; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+#stage-wrap { overflow:hidden; position:relative; flex:1; min-height:0; }
+#stage { background:#00FF00; width:100%; height:100%; min-height:0; display:flex; align-items:center; justify-content:center; overflow:hidden; }
 #stage-inner { text-align:center; width:100%; max-width:900px; line-height:1.25; padding:0 20px; }
 .cue-div { display:none; }
 .cue-div.on { display:block; }
@@ -146,7 +146,7 @@ canvas { display:none; }
 </div>
 
 <!-- ═══════════════ TAB 3: PREVIEW & RECORD ═══════════════ -->
-<div class="panel" id="panel-record" style="padding:0;flex-shrink:0;max-height:50vh;overflow-y:auto;">
+<div class="panel" id="panel-record" style="padding:0;flex-shrink:0;">
   <div id="ctrl-bar">
     <div id="ctrl-row1">
       <button id="r-play">▶ Preview</button>
@@ -168,7 +168,7 @@ canvas { display:none; }
   </div>
 
 <!-- Stage lives outside panel so it fills remaining space -->
-<div id="line-speeds-panel" style="background:#080818;border-top:1px solid #0f3460;padding:4px 8px;max-height:130px;overflow-y:auto;display:none;flex-shrink:0;">
+<div id="line-speeds-panel" style="background:#080818;border-top:1px solid #0f3460;padding:4px 8px;max-height:130px;overflow-y:auto;display:none;flex-shrink:0;min-height:0;">
   <div style="font-size:0.62rem;color:#444;margin-bottom:3px;text-transform:uppercase;letter-spacing:0.3px;">⚡ Speed per line &nbsp;|&nbsp; 🐌 Left = Slow &nbsp; Right = Fast ⚡ &nbsp;|&nbsp; Click line to jump preview</div>
   <div id="line-speeds-list"></div>
 </div>
@@ -210,19 +210,16 @@ function goTab(name) {
   document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-'+name));
   const sw = document.getElementById('stage-wrap');
   sw.style.display = name === 'record' ? 'block' : 'none';
-  // give it a frame to render then measure
-  requestAnimationFrame(() => fixStageHeight());
 }
 
 function fixStageHeight() {
+  // CSS flex handles this now — stage-wrap has flex:1
+  // Just ensure stage fills its wrapper
   const sw = document.getElementById('stage-wrap');
-  if (!sw || sw.style.display === 'none') return;
-  // Give stage exactly half the viewport height
-  const h = Math.floor(window.innerHeight * 0.5);
-  sw.style.height = h + 'px';
-  stage.style.height = h + 'px';
+  if (sw && sw.style.display !== 'none') {
+    stage.style.height = sw.offsetHeight + 'px';
+  }
 }
-
 window.addEventListener('resize', fixStageHeight);
 document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
   const name = t.dataset.tab;
@@ -479,7 +476,7 @@ document.getElementById('sync-go').addEventListener('click', () => {
   buildStage();
   buildLineSpeeds();
   goTab('record');
-  setTimeout(() => { fixStageHeight(); startPlayback(); }, 100);
+  setTimeout(() => startPlayback(), 100);
 });
 document.getElementById('sync-back').addEventListener('click', () => goTab('setup'));
 
@@ -515,7 +512,7 @@ function buildLineSpeeds() {
   if (!cues.length) { panel.style.display='none'; return; }
   panel.style.display = 'block';
   list.innerHTML = '';
-  requestAnimationFrame(() => fixStageHeight()); // recompute after panel height changes
+   // recompute after panel height changes
 
   const defaultSpd = parseInt(document.getElementById('r-wsp').value) || 350;
 
