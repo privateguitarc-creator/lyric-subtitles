@@ -182,7 +182,10 @@ canvas { display:none; }
 
 <!-- Line speeds panel — between ctrl-bar and stage -->
 <div id="line-speeds-panel">
-  <div class="hint">⚡ Highlight speed per line — 🐌 Left=Slow · Right=Fast ⚡ · Click line to jump</div>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;">
+    <div class="hint" style="margin:0;">⚡ Speed per line — 🐌 Left=Slow · Right=Fast ⚡ · Click to jump · ✏️ Edit timing · Tab between fields</div>
+    <button id="add-line-btn" style="font-size:0.68rem;padding:2px 8px;background:#1a4a20;border:1px solid #2ecc71;color:#2ecc71;border-radius:4px;cursor:pointer;flex-shrink:0;margin-left:8px;">+ Add Cue</button>
+  </div>
   <div id="line-speeds-list"></div>
 </div>
 
@@ -190,6 +193,10 @@ canvas { display:none; }
 <div id="stage-wrap">
   <div id="stage">
     <video id="bg-video" playsinline muted></video>
+    <!-- alignment guides — shown when subtitle near center -->
+    <div id="guide-h" style="position:absolute;top:50%;left:0;right:0;height:1px;background:rgba(0,200,255,0.7);display:none;pointer-events:none;z-index:5;box-shadow:0 0 4px rgba(0,200,255,0.8);"></div>
+    <div id="guide-v" style="position:absolute;left:50%;top:0;bottom:0;width:1px;background:rgba(0,200,255,0.7);display:none;pointer-events:none;z-index:5;box-shadow:0 0 4px rgba(0,200,255,0.8);"></div>
+    <div id="guide-center-dot" style="position:absolute;top:50%;left:50%;width:10px;height:10px;border-radius:50%;background:rgba(0,200,255,0.9);transform:translate(-50%,-50%);display:none;pointer-events:none;z-index:5;"></div>
     <div id="stage-inner"></div>
   </div>
 </div>
@@ -493,13 +500,29 @@ document.getElementById('r-vidsize').addEventListener('input', e => {
 let subX = 50, subY = 85; // percent of stage (default: center, near bottom)
 let isDragging = false, dragStartX, dragStartY, dragStartSubX, dragStartSubY;
 
+const SNAP_THRESHOLD = 3; // percent — snap to center within 3%
+
 function positionSubtitle() {
   const si = document.getElementById('stage-inner');
   const sw = document.getElementById('stage');
   const siW = si.offsetWidth, siH = si.offsetHeight;
   const swW = sw.offsetWidth, swH = sw.offsetHeight;
-  si.style.left = Math.max(0, Math.min(swW-siW, (subX/100)*swW - siW/2)) + 'px';
-  si.style.top  = Math.max(0, Math.min(swH-siH, (subY/100)*swH - siH/2)) + 'px';
+
+  // snap to center if close
+  const snapH = Math.abs(subX - 50) < SNAP_THRESHOLD;
+  const snapV = Math.abs(subY - 50) < SNAP_THRESHOLD;
+  const dispX = snapH ? 50 : subX;
+  const dispY = snapV ? 50 : subY;
+
+  si.style.left = Math.max(0, Math.min(swW-siW, (dispX/100)*swW - siW/2)) + 'px';
+  si.style.top  = Math.max(0, Math.min(swH-siH, (dispY/100)*swH - siH/2)) + 'px';
+
+  // show/hide guides
+  const nearH = Math.abs(subX - 50) < SNAP_THRESHOLD + 5;
+  const nearV = Math.abs(subY - 50) < SNAP_THRESHOLD + 5;
+  document.getElementById('guide-v').style.display = (isDragging && nearH) ? 'block' : 'none';
+  document.getElementById('guide-h').style.display = (isDragging && nearV) ? 'block' : 'none';
+  document.getElementById('guide-center-dot').style.display = (isDragging && nearH && nearV) ? 'block' : 'none';
 }
 
 document.getElementById('stage-inner').addEventListener('mousedown', e => {
@@ -521,6 +544,14 @@ document.addEventListener('mousemove', e => {
 document.addEventListener('mouseup', () => {
   isDragging = false;
   document.getElementById('stage-inner').classList.remove('dragging');
+  // hide guides
+  document.getElementById('guide-v').style.display='none';
+  document.getElementById('guide-h').style.display='none';
+  document.getElementById('guide-center-dot').style.display='none';
+  // snap if close
+  if(Math.abs(subX-50)<SNAP_THRESHOLD) subX=50;
+  if(Math.abs(subY-50)<SNAP_THRESHOLD) subY=50;
+  positionSubtitle();
 });
 
 // touch drag
@@ -536,7 +567,15 @@ document.addEventListener('touchmove', e => {
   subY = Math.max(5,Math.min(95, dragStartSubY+(t.clientY-dragStartY)/sw.offsetHeight*100));
   positionSubtitle();
 }, {passive:true});
-document.addEventListener('touchend', ()=>{ isDragging=false; });
+document.addEventListener('touchend', ()=>{
+  isDragging=false;
+  document.getElementById('guide-v').style.display='none';
+  document.getElementById('guide-h').style.display='none';
+  document.getElementById('guide-center-dot').style.display='none';
+  if(Math.abs(subX-50)<SNAP_THRESHOLD) subX=50;
+  if(Math.abs(subY-50)<SNAP_THRESHOLD) subY=50;
+  positionSubtitle();
+});
 
 document.getElementById('r-reset-pos').addEventListener('click', ()=>{
   subX=50; subY=85; positionSubtitle();
@@ -598,81 +637,181 @@ function getSpeedLabel(ms) {
 }
 
 function buildLineSpeeds() {
-  const panel=document.getElementById('line-speeds-panel');
-  const list=document.getElementById('line-speeds-list');
-  if(!cues.length){panel.style.display='none';return;}
-  panel.style.display='block'; list.innerHTML='';
-  const defSpd=parseInt(document.getElementById('r-wsp').value)||350;
+  const panel = document.getElementById('line-speeds-panel');
+  const list  = document.getElementById('line-speeds-list');
+  if (!cues.length) { panel.style.display='none'; return; }
+  panel.style.display = 'block';
+  list.innerHTML = '';
+  const defSpd = parseInt(document.getElementById('r-wsp').value)||350;
 
-  cues.forEach((cue,ci)=>{
-    if(!cue.lineSpeeds) cue.lineSpeeds=[];
-    while(cue.lineSpeeds.length<cue.lines.length) cue.lineSpeeds.push(null);
+  cues.forEach((cue, ci) => {
+    if (!cue.lineSpeeds) cue.lineSpeeds = [];
+    while (cue.lineSpeeds.length < cue.lines.length) cue.lineSpeeds.push(null);
 
-    cue.lines.forEach((line,li)=>{
-      const spd=cue.lineSpeeds[li]!==null?cue.lineSpeeds[li]:defSpd;
-      const inv=1240-spd;
+    cue.lines.forEach((line, li) => {
+      const spd = cue.lineSpeeds[li] !== null ? cue.lineSpeeds[li] : defSpd;
+      const inv = 1240 - spd;
 
-      const row=document.createElement('div');
-      row.style.cssText='display:flex;align-items:center;gap:8px;padding:3px 6px;border-bottom:1px solid #0f0f22;cursor:pointer;transition:background 0.1s;';
-      row.addEventListener('mouseenter',()=>row.style.background='#0f0f28');
-      row.addEventListener('mouseleave',()=>row.style.background='');
-      row.addEventListener('click',e=>{if(e.target.tagName==='INPUT'||e.target.tagName==='BUTTON')return;jumpToCue(ci);});
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:3px 4px;border-bottom:1px solid #0f0f22;';
+      row.dataset.ci = ci; row.dataset.li = li;
 
-      // C1L1 label
-      const lbl=document.createElement('span');
-      lbl.style.cssText='font-size:0.66rem;color:#555;min-width:40px;flex-shrink:0;font-weight:700;';
-      lbl.textContent='C'+(ci+1)+'L'+(li+1); row.appendChild(lbl);
+      // ── drag handle ──
+      const handle = document.createElement('span');
+      handle.textContent = '⠿';
+      handle.title = 'Drag to reorder';
+      handle.style.cssText = 'color:#333;font-size:0.9rem;cursor:grab;flex-shrink:0;padding:0 2px;';
+      handle.draggable = true;
+      row.appendChild(handle);
 
-      // lyric text
-      const txt=document.createElement('span');
-      txt.style.cssText='font-size:0.76rem;color:#ccc;width:200px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;';
-      txt.title='Click to jump here'; txt.textContent=line; row.appendChild(txt);
+      // ── cue+line label ──
+      const lbl = document.createElement('span');
+      lbl.style.cssText = 'font-size:0.65rem;color:#555;min-width:38px;flex-shrink:0;font-weight:700;';
+      lbl.textContent = 'C'+(ci+1)+'L'+(li+1);
+      row.appendChild(lbl);
 
-      // slow emoji
-      const sl1=document.createElement('span'); sl1.textContent='🐌'; sl1.style.cssText='font-size:0.62rem;flex-shrink:0;'; row.appendChild(sl1);
+      // ── timing input (editable mm:ss) ──
+      const timeInp = document.createElement('input');
+      timeInp.type = 'text';
+      timeInp.value = secsToMmss(cue.startTime);
+      timeInp.placeholder = 'm:ss';
+      timeInp.title = 'Start time — edit directly';
+      timeInp.dataset.ci = ci;
+      timeInp.style.cssText = 'width:52px;font-size:0.72rem;background:#0f3460;border:1px solid #1a3a6a;border-radius:3px;color:#fff;padding:2px 4px;outline:none;flex-shrink:0;';
+      timeInp.addEventListener('change', e => {
+        cues[+e.target.dataset.ci].startTime = mmssToSecs(e.target.value);
+        e.target.value = secsToMmss(cues[+e.target.dataset.ci].startTime);
+        finalizeCues();
+      });
+      // Tab moves to next timing input
+      timeInp.addEventListener('keydown', e => {
+        if (e.key === 'Tab') {
+          e.preventDefault();
+          const allInputs = Array.from(list.querySelectorAll('input[type=text]'));
+          const idx = allInputs.indexOf(e.target);
+          const next = allInputs[idx + (e.shiftKey ? -1 : 1)];
+          if (next) next.focus();
+        }
+        if (e.key === 'Enter') {
+          e.target.blur();
+          const allInputs = Array.from(list.querySelectorAll('input[type=text]'));
+          const idx = allInputs.indexOf(e.target);
+          const next = allInputs[idx + 1];
+          if (next) next.focus();
+        }
+      });
+      row.appendChild(timeInp);
 
-      // slider (inverted: right=fast)
-      const slider=document.createElement('input');
-      slider.type='range'; slider.min=40; slider.max=1200; slider.value=inv; slider.step=10;
-      slider.style.cssText='flex:1;min-width:100px;max-width:180px;accent-color:#e94560;';
-      slider.dataset.ci=ci; slider.dataset.li=li; slider.className='spd-sl';
+      // ── lyric text (click to jump) ──
+      const txt = document.createElement('span');
+      txt.style.cssText = 'font-size:0.74rem;color:#ccc;width:160px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;cursor:pointer;';
+      txt.title = 'Click to jump preview here';
+      txt.textContent = line;
+      txt.addEventListener('click', () => jumpToCue(ci));
+      row.appendChild(txt);
+
+      // ── slow emoji ──
+      const sl1 = document.createElement('span');
+      sl1.textContent = '🐌'; sl1.style.cssText = 'font-size:0.6rem;flex-shrink:0;';
+      row.appendChild(sl1);
+
+      // ── speed slider (inverted: right=fast) ──
+      const slider = document.createElement('input');
+      slider.type = 'range'; slider.min = 40; slider.max = 1200;
+      slider.value = inv; slider.step = 10;
+      slider.style.cssText = 'flex:1;min-width:80px;max-width:160px;accent-color:#e94560;';
+      slider.dataset.ci = ci; slider.dataset.li = li;
       row.appendChild(slider);
 
-      // fast emoji
-      const sl2=document.createElement('span'); sl2.textContent='⚡'; sl2.style.cssText='font-size:0.62rem;flex-shrink:0;'; row.appendChild(sl2);
+      // ── fast emoji ──
+      const sl2 = document.createElement('span');
+      sl2.textContent = '⚡'; sl2.style.cssText = 'font-size:0.6rem;flex-shrink:0;';
+      row.appendChild(sl2);
 
-      // ms label
-      const msLbl=document.createElement('span');
-      msLbl.style.cssText='font-size:0.72rem;color:#e94560;font-weight:700;min-width:40px;text-align:right;flex-shrink:0;';
-      msLbl.textContent=spd+'ms'; row.appendChild(msLbl);
+      // ── ms label ──
+      const msLbl = document.createElement('span');
+      msLbl.style.cssText = 'font-size:0.72rem;color:#e94560;font-weight:700;min-width:40px;text-align:right;flex-shrink:0;';
+      msLbl.textContent = spd+'ms';
+      row.appendChild(msLbl);
 
-      // speed label
-      const spdLbl=document.createElement('span');
-      spdLbl.style.cssText='font-size:0.7rem;color:#2ecc71;font-weight:700;min-width:76px;flex-shrink:0;';
-      spdLbl.textContent=getSpeedLabel(spd); row.appendChild(spdLbl);
+      // ── speed emoji label ──
+      const spdLbl = document.createElement('span');
+      spdLbl.style.cssText = 'font-size:0.68rem;color:#2ecc71;font-weight:700;min-width:74px;flex-shrink:0;';
+      spdLbl.textContent = getSpeedLabel(spd);
+      row.appendChild(spdLbl);
 
-      // reset btn
-      const resetBtn=document.createElement('button');
-      resetBtn.className='sec'; resetBtn.textContent='↺'; resetBtn.title='Reset to default';
-      resetBtn.style.cssText='font-size:0.6rem;padding:2px 5px;flex-shrink:0;';
-      resetBtn.dataset.ci=ci; resetBtn.dataset.li=li; row.appendChild(resetBtn);
+      // ── reset btn ──
+      const resetBtn = document.createElement('button');
+      resetBtn.className = 'sec'; resetBtn.textContent = '↺'; resetBtn.title = 'Reset speed';
+      resetBtn.style.cssText = 'font-size:0.6rem;padding:2px 5px;flex-shrink:0;';
+      row.appendChild(resetBtn);
 
-      slider.addEventListener('input',()=>{
-        const v=parseInt(slider.value),actual=1240-v;
-        cues[+slider.dataset.ci].lineSpeeds[+slider.dataset.li]=actual;
-        msLbl.textContent=actual+'ms'; spdLbl.textContent=getSpeedLabel(actual);
+      // ── delete btn ──
+      const delBtn = document.createElement('button');
+      delBtn.textContent = '✕'; delBtn.title = 'Delete cue';
+      delBtn.style.cssText = 'font-size:0.6rem;padding:2px 5px;flex-shrink:0;background:#3a0f0f;border:1px solid #e94560;color:#e94560;border-radius:4px;cursor:pointer;';
+      row.appendChild(delBtn);
+
+      // slider listener
+      slider.addEventListener('input', () => {
+        const v = parseInt(slider.value), actual = 1240 - v;
+        cues[+slider.dataset.ci].lineSpeeds[+slider.dataset.li] = actual;
+        msLbl.textContent = actual+'ms'; spdLbl.textContent = getSpeedLabel(actual);
       });
-      resetBtn.addEventListener('click',()=>{
-        const def=parseInt(document.getElementById('r-wsp').value)||350;
-        cues[+resetBtn.dataset.ci].lineSpeeds[+resetBtn.dataset.li]=null;
-        slider.value=1240-def; msLbl.textContent=def+'ms'; spdLbl.textContent=getSpeedLabel(def);
+
+      // reset listener
+      resetBtn.addEventListener('click', () => {
+        const def = parseInt(document.getElementById('r-wsp').value)||350;
+        cues[+resetBtn.dataset.ci].lineSpeeds[+resetBtn.dataset.li] = null;
+        slider.value = 1240-def; msLbl.textContent = def+'ms'; spdLbl.textContent = getSpeedLabel(def);
+      });
+
+      // delete listener
+      delBtn.addEventListener('click', () => {
+        if (cues.length > 1 && confirm('Delete this cue?')) {
+          cues.splice(ci, 1);
+          buildStage(); buildLineSpeeds();
+        }
+      });
+
+      // drag-to-reorder
+      handle.addEventListener('dragstart', e => {
+        e.dataTransfer.setData('text/plain', JSON.stringify({ci,li}));
+        row.style.opacity = '0.4';
+      });
+      handle.addEventListener('dragend', () => row.style.opacity = '1');
+      row.addEventListener('dragover', e => { e.preventDefault(); row.style.borderTop='2px solid #e94560'; });
+      row.addEventListener('dragleave', () => row.style.borderTop='');
+      row.addEventListener('drop', e => {
+        e.preventDefault(); row.style.borderTop='';
+        try {
+          const from = JSON.parse(e.dataTransfer.getData('text/plain'));
+          if (from.ci !== ci) {
+            const moved = cues.splice(from.ci, 1)[0];
+            cues.splice(ci, 0, moved);
+            buildStage(); buildLineSpeeds();
+          }
+        } catch(err){}
       });
 
       list.appendChild(row);
     });
   });
+
   requestAnimationFrame(fixStageHeight);
 }
+
+// Add cue button
+document.getElementById('add-line-btn').addEventListener('click', () => {
+  cues.push({lines:['NEW LINE'], startTime:null, endTime:null, lineSpeeds:[null]});
+  buildStage(); buildLineSpeeds();
+  // focus the new timing input
+  setTimeout(() => {
+    const inputs = document.querySelectorAll('#line-speeds-list input[type=text]');
+    if (inputs.length) inputs[inputs.length-1].focus();
+  }, 100);
+});
+
 
 // ══════════════════════════════════════════
 // SEEK BAR
