@@ -717,37 +717,68 @@ function jumpToCue(idx) {
 // ══════════════════════════════════════════
 const recCanvas = document.getElementById('rec-canvas');
 
+// Keep a persistent canvas context with alpha enabled
+let _recCtx = null;
+function getRecCtx() {
+  if (!_recCtx || _recCtx.canvas !== recCanvas) {
+    _recCtx = recCanvas.getContext('2d', { alpha: true, willReadFrequently: false });
+  }
+  return _recCtx;
+}
+
 function drawCanvas() {
   if (!isRecording) return;
-  const ctx = recCanvas.getContext('2d', { alpha: true });
+  const ctx = getRecCtx();
   const W = recCanvas.width, H = recCanvas.height;
+
+  // Clear to fully transparent — no background color at all
   ctx.clearRect(0, 0, W, H);
-  if (activeCueIdx < 0) return;
+
+  if (activeCueIdx < 0) return; // transparent when no lyrics showing
+
   const cueDiv = stageInner.querySelector('.cue-div[data-cue="' + activeCueIdx + '"]');
   if (!cueDiv || !cueDiv.classList.contains('on')) return;
+
   const fontPx = Math.round(parseFloat(document.getElementById('r-font').value) / 100 * W);
   ctx.font = '900 ' + fontPx + 'px "Arial Black", Arial, sans-serif';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
   const lines = Array.from(cueDiv.querySelectorAll('.sl-line'));
   const lineH = fontPx * 1.28;
   const totalH = lineH * lines.length;
+
   lines.forEach((line, li) => {
     const y = H/2 - totalH/2 + lineH*li + lineH/2;
     const chars = Array.from(line.querySelectorAll('.ch'));
-    const fullText = chars.map(c=>c.textContent.toUpperCase()).join('');
+    const fullText = chars.map(c => c.textContent.toUpperCase()).join('');
     const tw = ctx.measureText(fullText).width;
-    const scale = tw > W*0.88 ? (W*0.88)/tw : 1;
+    const scale = tw > W * 0.88 ? (W * 0.88) / tw : 1;
+
     ctx.save();
-    if (scale<1) { ctx.translate(W/2,y); ctx.scale(scale,scale); ctx.translate(-W/2,-y); }
+    if (scale < 1) { ctx.translate(W/2, y); ctx.scale(scale, scale); ctx.translate(-W/2, -y); }
+
     let x = W/2 - tw/2;
     chars.forEach(ch => {
       const txt = ch.textContent.toUpperCase();
-      const cw = ctx.measureText(txt).width; const cx = x+cw/2;
-      const outl = Math.max(3, Math.round(fontPx*0.07));
-      ctx.fillStyle = '#000';
-      [[-outl,-outl],[outl,-outl],[-outl,outl],[outl,outl],[0,outl]].forEach(([ox,oy]) => ctx.fillText(txt,cx+ox,y+oy));
-      ctx.fillStyle = ch.classList.contains('hl') ? '#FFE600' : '#FFFFFF';
-      ctx.fillText(txt, cx, y); x += cw;
+      const cw  = ctx.measureText(txt).width;
+      const cx  = x + cw/2;
+      const isHL = ch.classList.contains('hl');
+      const outl = Math.max(4, Math.round(fontPx * 0.08));
+
+      // Draw thick black outline for readability over any video
+      ctx.fillStyle = 'rgba(0,0,0,0.95)';
+      for (let ox = -outl; ox <= outl; ox += Math.ceil(outl/2)) {
+        for (let oy = -outl; oy <= outl; oy += Math.ceil(outl/2)) {
+          if (ox === 0 && oy === 0) continue;
+          ctx.fillText(txt, cx+ox, y+oy);
+        }
+      }
+
+      // Main text — white or yellow
+      ctx.fillStyle = isHL ? '#FFE600' : '#FFFFFF';
+      ctx.fillText(txt, cx, y);
+      x += cw;
     });
     ctx.restore();
   });
@@ -759,47 +790,72 @@ function drawCanvas() {
 document.getElementById('r-record').addEventListener('click', () => {
   if (isRecording) { stopRecording(); return; }
   if (!cues.length) { alert('Load lyrics first!'); return; }
+
+  // Use 4K resolution for crisp text at any size
   const stageEl = document.getElementById('stage');
-  const capW = Math.round(1080 * stageEl.offsetWidth / stageEl.offsetHeight);
-  const capH = 1080;
-  recCanvas.width = capW; recCanvas.height = capH;
+  const capW = Math.round(2160 * stageEl.offsetWidth / stageEl.offsetHeight);
+  const capH = 2160;
+  recCanvas.width  = capW;
+  recCanvas.height = capH;
+
+  // IMPORTANT: get context with alpha BEFORE captureStream
   const ctx0 = recCanvas.getContext('2d', { alpha: true });
-  ctx0.clearRect(0, 0, capW, capH);
+  ctx0.clearRect(0, 0, capW, capH); // fully transparent first frame
+
+  // Capture BEFORE starting stream — ensures alpha channel is preserved
   const stream = recCanvas.captureStream(30);
-  const mimeType = ['video/mp4;codecs=avc1','video/mp4','video/webm;codecs=vp9','video/webm']
-    .find(t => MediaRecorder.isTypeSupported(t)) || 'video/webm';
-  const fileExt = mimeType.includes('mp4') ? 'mp4' : 'webm';
+
+  // WebM VP9 — ONLY format that supports transparency
+  // MP4/H264 does NOT support alpha channel
+  const mimeType = 'video/webm;codecs=vp9';
+  if (!MediaRecorder.isTypeSupported(mimeType)) {
+    alert('Your browser does not support transparent video recording. Please use Chrome.');
+    return;
+  }
+
   recordedChunks = [];
-  mediaRecorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8000000 });
-  mediaRecorder.ondataavailable = e => { if (e.data && e.data.size > 0) recordedChunks.push(e.data); };
+  mediaRecorder = new MediaRecorder(stream, {
+    mimeType,
+    videoBitsPerSecond: 20000000 // 20 Mbps for 4K quality
+  });
+
+  mediaRecorder.ondataavailable = e => {
+    if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+  };
+
   mediaRecorder.onstop = () => {
-    clearInterval(recTimerInterval); clearInterval(recCanvasInterval);
+    clearInterval(recTimerInterval);
+    clearInterval(recCanvasInterval);
     isRecording = false;
     document.getElementById('r-record').textContent = '⏺ Record';
     document.getElementById('r-record').classList.remove('rec');
     document.getElementById('rec-timer').classList.remove('on');
     if (!recordedChunks.length) { alert('Nothing recorded.'); return; }
     const blob = new Blob(recordedChunks, { type: mimeType });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = 'lyrics.' + fileExt;
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url;
+    a.download = 'lyrics-transparent.webm';
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 15000);
   };
+
   isRecording = true;
   mediaRecorder.start(100);
-  recCanvasInterval = setInterval(drawCanvas, 1000/30);
+  recCanvasInterval = setInterval(drawCanvas, 1000 / 30);
   startPlayback();
+
   document.getElementById('r-record').textContent = '⏹ Stop & Save';
   document.getElementById('r-record').classList.add('rec');
   const rt = document.getElementById('rec-timer');
   rt.classList.add('on'); rt.textContent = '00:00';
   const t0 = Date.now();
   recTimerInterval = setInterval(() => {
-    const s = Math.floor((Date.now()-t0)/1000);
-    rt.textContent = String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
+    const s = Math.floor((Date.now() - t0) / 1000);
+    rt.textContent = String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
   }, 1000);
 });
+
 
 function stopRecording() {
   clearInterval(recCanvasInterval); recCanvasInterval = null;
