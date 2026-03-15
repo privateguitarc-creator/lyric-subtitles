@@ -78,7 +78,7 @@ audio { width:100%; border-radius:5px; }
 /* STAGE */
 #stage-wrap { overflow:hidden; position:relative; background:#00FF00; }
 #stage { background:#00FF00; width:100%; height:100%; display:flex; align-items:center; justify-content:center; overflow:hidden; }
-#stage-inner { text-align:center; width:96%; line-height:1.25; }
+#stage-inner { text-align:center; width:100%; max-width:900px; line-height:1.25; padding:0 20px; }
 .cue-div { display:none; }
 .cue-div.on { display:block; }
 .sl-line { display:block; white-space:nowrap; }
@@ -146,7 +146,7 @@ canvas { display:none; }
 </div>
 
 <!-- ═══════════════ TAB 3: PREVIEW & RECORD ═══════════════ -->
-<div class="panel" id="panel-record" style="padding:0;flex-shrink:0;">
+<div class="panel" id="panel-record" style="padding:0;flex-shrink:0;max-height:50vh;overflow-y:auto;">
   <div id="ctrl-bar">
     <div id="ctrl-row1">
       <button id="r-play">▶ Preview</button>
@@ -168,7 +168,7 @@ canvas { display:none; }
   </div>
 
 <!-- Stage lives outside panel so it fills remaining space -->
-<div id="line-speeds-panel" style="background:#080818;border-top:1px solid #0f3460;padding:4px 8px;max-height:150px;overflow-y:auto;display:none;flex-shrink:0;">
+<div id="line-speeds-panel" style="background:#080818;border-top:1px solid #0f3460;padding:4px 8px;max-height:130px;overflow-y:auto;display:none;flex-shrink:0;">
   <div style="font-size:0.62rem;color:#444;margin-bottom:3px;text-transform:uppercase;letter-spacing:0.3px;">⚡ Speed per line &nbsp;|&nbsp; 🐌 Left = Slow &nbsp; Right = Fast ⚡ &nbsp;|&nbsp; Click line to jump preview</div>
   <div id="line-speeds-list"></div>
 </div>
@@ -216,14 +216,9 @@ function goTab(name) {
 
 function fixStageHeight() {
   const sw = document.getElementById('stage-wrap');
-  if (sw.style.display === 'none') return;
-  // sum height of everything above stage-wrap
-  let used = 0;
-  document.querySelectorAll('#tabs, .panel.active, #line-speeds-panel, #ctrl-bar').forEach(el => {
-    if (el && el.offsetParent !== null) used += el.offsetHeight;
-  });
-  // also count ctrl-bar which is inside panel-record (already active)
-  const h = Math.max(80, window.innerHeight - used);
+  if (!sw || sw.style.display === 'none') return;
+  // Give stage exactly half the viewport height
+  const h = Math.floor(window.innerHeight * 0.5);
   sw.style.height = h + 'px';
   stage.style.height = h + 'px';
 }
@@ -534,7 +529,7 @@ function buildLineSpeeds() {
       // slider is INVERTED: right=fast(low ms), left=slow(high ms)
       // so we store actual ms but display inverted slider
       // inverted value = max + min - actual = 1200 + 40 - spd = 1240 - spd
-      const invertedVal = 1240 - spd;
+      // inverted slider: right=fast(40ms) left=slow(1500ms)
 
       const row = document.createElement('div');
       row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:3px 6px;border-bottom:1px solid #0f0f22;cursor:pointer;transition:background 0.12s;';
@@ -568,8 +563,8 @@ function buildLineSpeeds() {
 
       // inverted slider: left=slow(1200ms), right=fast(40ms)
       const slider = document.createElement('input');
-      slider.type = 'range'; slider.min = 40; slider.max = 1200;
-      slider.value = invertedVal; slider.step = 10;
+      slider.type = 'range'; slider.min = 40; slider.max = 1500;
+      slider.value = 1540 - spd; slider.step = 10;
       slider.style.cssText = 'width:120px;flex-shrink:0;accent-color:#e94560;';
 
       // FAST label
@@ -579,17 +574,20 @@ function buildLineSpeeds() {
       row.appendChild(slider);
       row.appendChild(fastLbl);
 
-      // ms value display
-      const msLbl = document.createElement('span');
-      msLbl.style.cssText = 'font-size:0.72rem;color:#e94560;font-weight:700;min-width:40px;text-align:right;flex-shrink:0;';
-      msLbl.textContent = spd+'ms';
-      row.appendChild(msLbl);
-
-      // speed emoji label
+      // speed label
       const speedLbl = document.createElement('span');
-      speedLbl.style.cssText = 'font-size:0.7rem;color:#2ecc71;font-weight:700;min-width:72px;flex-shrink:0;';
+      speedLbl.style.cssText = 'font-size:0.68rem;color:#2ecc71;font-weight:700;min-width:68px;flex-shrink:0;';
       speedLbl.textContent = getSpeedLabel(spd);
       row.appendChild(speedLbl);
+
+      // manual number input box
+      const numInput = document.createElement('input');
+      numInput.type = 'number';
+      numInput.min = 40; numInput.max = 1500; numInput.step = 10;
+      numInput.value = spd;
+      numInput.style.cssText = 'width:54px;font-size:0.76rem;background:#0f3460;border:1px solid #e94560;border-radius:4px;color:#fff;padding:2px 4px;text-align:center;flex-shrink:0;outline:none;';
+      numInput.title = 'Type ms value directly';
+      row.appendChild(numInput);
 
       // reset btn
       const resetBtn = document.createElement('button');
@@ -607,27 +605,35 @@ function buildLineSpeeds() {
       editBtn.style.cssText = 'font-size:0.7rem;padding:2px 5px;flex-shrink:0;background:#1a3a1a;border-color:#2ecc71;';
       row.appendChild(editBtn);
 
-      slider.addEventListener('input', () => {
-        const invV = parseInt(slider.value);
-        const actualMs = 1240 - invV;
-        cue.lineSpeeds[li] = actualMs;
-        msLbl.textContent = actualMs+'ms';
-        speedLbl.textContent = getSpeedLabel(actualMs);
+      // central apply function keeps slider + numInput + label in sync
+      function applySpeed(ms) {
+        ms = Math.min(1500, Math.max(40, Math.round(ms / 10) * 10));
+        cue.lineSpeeds[li] = ms;
+        slider.value = 1540 - ms;
+        numInput.value = ms;
+        speedLbl.textContent = getSpeedLabel(ms);
+      }
+
+      slider.addEventListener('input', () => applySpeed(1540 - parseInt(slider.value)));
+
+      numInput.addEventListener('change', () => {
+        const v = parseInt(numInput.value);
+        if (!isNaN(v)) applySpeed(v);
+      });
+      numInput.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { const v = parseInt(numInput.value); if (!isNaN(v)) applySpeed(v); }
       });
 
       resetBtn.addEventListener('click', () => {
-        cue.lineSpeeds[li] = null;
-        const def = parseInt(document.getElementById('r-wsp').value)||350;
-        slider.value = 1240 - def;
-        msLbl.textContent = def+'ms';
-        speedLbl.textContent = getSpeedLabel(def);
+        const def = parseInt(document.getElementById('r-wsp').value) || 350;
+        applySpeed(def);
+        cue.lineSpeeds[li] = null; // null = follow global
       });
 
       editBtn.addEventListener('click', () => {
         const newText = prompt('Edit line:', line);
-        if (newText === null) return; // cancelled
+        if (newText === null) return;
         cue.lines[li] = newText.trim() || line;
-        // rebuild stage and speed panel
         buildStage();
         buildLineSpeeds();
       });
@@ -660,11 +666,12 @@ function jumpPreviewToCue(ci) {
 }
 
 function getSpeedLabel(ms) {
-  if (ms <= 80)  return '⚡ Very Fast';
-  if (ms <= 160) return '🔥 Fast';
-  if (ms <= 300) return '▶ Normal';
-  if (ms <= 600) return '🐢 Slow';
-  return '🐌 Very Slow';
+  if (ms <= 80)   return '⚡ Very Fast';
+  if (ms <= 160)  return '🔥 Fast';
+  if (ms <= 300)  return '▶ Normal';
+  if (ms <= 700)  return '🐢 Slow';
+  if (ms <= 1100) return '🐌 Very Slow';
+  return '🐌🐌 Ultra Slow';
 }
 
 // ══════════════════════════════════════════
@@ -955,7 +962,7 @@ function drawCanvas() {
     const chars = Array.from(line.querySelectorAll('.ch'));
     const fullText = chars.map(c=>c.textContent).join('');
     const tw = ctx.measureText(fullText).width;
-    const scale = tw > W*0.95 ? (W*0.95)/tw : 1;
+    const scale = tw > W*0.88 ? (W*0.88)/tw : 1;
 
     ctx.save();
     if (scale < 1) {
