@@ -780,36 +780,75 @@ document.getElementById('r-record').addEventListener('click', () => {
   if (isRecording) { stopRecording(); return; }
   if (!cues.length) { alert('Load lyrics first!'); return; }
 
-  // 4K canvas — text stays sharp at any size
+  // 4K canvas
   const stageEl = document.getElementById('stage');
   const capW = Math.round(2160 * stageEl.offsetWidth / stageEl.offsetHeight);
   const capH = 2160;
   recCanvas.width  = capW;
   recCanvas.height = capH;
 
-  // Green first frame
+  // Draw green first frame immediately
   const ctx0 = recCanvas.getContext('2d');
   ctx0.fillStyle = '#00FF00';
   ctx0.fillRect(0, 0, capW, capH);
 
-  const stream = recCanvas.captureStream(30);
+  // Get stream
+  let stream;
+  try {
+    stream = recCanvas.captureStream(30);
+  } catch(e) {
+    alert('captureStream failed: ' + e.message + '
+Please use Chrome browser.');
+    return;
+  }
 
-  // MP4 first, fallback webm
-  const mimeType = [
+  if (!stream || stream.getVideoTracks().length === 0) {
+    alert('No video stream. Please use Chrome browser.');
+    return;
+  }
+
+  // Find supported mime type - try each one
+  let mimeType = '';
+  const candidates = [
     'video/mp4;codecs=avc1',
     'video/mp4',
     'video/webm;codecs=vp9',
+    'video/webm;codecs=vp8',
     'video/webm'
-  ].find(t => MediaRecorder.isTypeSupported(t)) || 'video/webm';
+  ];
+  for (const t of candidates) {
+    if (MediaRecorder.isTypeSupported(t)) { mimeType = t; break; }
+  }
+
   const fileExt = mimeType.includes('mp4') ? 'mp4' : 'webm';
 
   recordedChunks = [];
-  mediaRecorder = new MediaRecorder(stream, {
-    mimeType,
-    videoBitsPerSecond: 40000000  // 40 Mbps for 4K quality
-  });
+
+  try {
+    if (mimeType) {
+      mediaRecorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 20000000 });
+    } else {
+      mediaRecorder = new MediaRecorder(stream); // browser default
+    }
+  } catch(e) {
+    try {
+      mediaRecorder = new MediaRecorder(stream);
+      mimeType = '';
+    } catch(e2) {
+      alert('MediaRecorder not supported: ' + e2.message);
+      return;
+    }
+  }
+
+  console.log('Recording with mimeType:', mediaRecorder.mimeType);
+
+  mediaRecorder.onerror = e => {
+    console.error('MediaRecorder error:', e);
+    alert('Recording error: ' + e.error);
+  };
 
   mediaRecorder.ondataavailable = e => {
+    console.log('Data chunk:', e.data ? e.data.size : 'null');
     if (e.data && e.data.size > 0) recordedChunks.push(e.data);
   };
 
@@ -820,8 +859,11 @@ document.getElementById('r-record').addEventListener('click', () => {
     document.getElementById('r-record').textContent = '⏺ Record';
     document.getElementById('r-record').classList.remove('rec');
     document.getElementById('rec-timer').classList.remove('on');
-    if (!recordedChunks.length) { alert('Nothing recorded.'); return; }
-    const blob = new Blob(recordedChunks, { type: mimeType });
+    console.log('Total chunks:', recordedChunks.length);
+    if (!recordedChunks.length) { alert('Nothing recorded. Check console for errors.'); return; }
+    const finalMime = mimeType || 'video/webm';
+    const blob = new Blob(recordedChunks, { type: finalMime });
+    console.log('Blob size:', blob.size);
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href = url;
@@ -830,8 +872,15 @@ document.getElementById('r-record').addEventListener('click', () => {
     setTimeout(() => URL.revokeObjectURL(url), 15000);
   };
 
+  try {
+    mediaRecorder.start(100);
+    console.log('MediaRecorder started, state:', mediaRecorder.state);
+  } catch(e) {
+    alert('Failed to start recording: ' + e.message);
+    return;
+  }
+
   isRecording = true;
-  mediaRecorder.start(100);
   recCanvasInterval = setInterval(drawCanvas, 1000 / 30);
   startPlayback();
 
