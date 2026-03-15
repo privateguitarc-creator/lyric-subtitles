@@ -836,72 +836,77 @@ function getAudioTime() {
   return audioStartOffset + elapsed;
 }
 
+// Pre-built highlight schedule: unitAbsTimes[i] = audio time in seconds
+// when stageUnits[i] should be highlighted
+let unitAbsTimes = [];
+
+function buildHighlightSchedule() {
+  unitAbsTimes = [];
+  const mode = document.getElementById('r-mode').value;
+  stageUnits.forEach((u, i) => {
+    const cue = cues[u.cueIdx];
+    if (!cue || cue.startTime === null) { unitAbsTimes.push(null); return; }
+    // Find all units in this cue up to this one
+    const cueUnits = stageUnits.filter(x => x.cueIdx === u.cueIdx);
+    const posInCue = cueUnits.indexOf(u);
+    // Calculate time offset from cue start
+    let offsetMs = 0;
+    for (let j = 0; j < posInCue; j++) {
+      const cu = cueUnits[j];
+      const globalSpd = mode === 'char'
+        ? parseInt(document.getElementById('r-csp').value)
+        : parseInt(document.getElementById('r-wsp').value);
+      const lineSpd = (cue.lineSpeeds && cue.lineSpeeds[cu.lineIdx] != null)
+        ? cue.lineSpeeds[cu.lineIdx] : globalSpd;
+      offsetMs += lineSpd;
+    }
+    unitAbsTimes.push(cue.startTime + offsetMs / 1000);
+  });
+}
+
 function rafLoop() {
   if (!isPlaying) return;
   const t = getAudioTime();
   updateSeekBar(t);
 
-  // find which cue should be active
+  // find which cue should be active based on audio time
   let wantCue = -1;
-  for (let i=0; i<cues.length; i++) {
+  for (let i = 0; i < cues.length; i++) {
     const c = cues[i];
     if (c.startTime === null) continue;
     const end = c.endTime !== null ? c.endTime : c.startTime + 9999;
     if (t >= c.startTime && t < end) { wantCue = i; break; }
   }
 
-  // cue changed?
+  // cue changed — show/hide
   if (wantCue !== activeCueIdx) {
     clearHL();
-      if (wantCue === -1) {
+    if (wantCue === -1) {
       hideCue();
-      unitIdx = 0;
     } else {
       showCueEl(wantCue);
-      unitIdx = stageUnits.findIndex(u => u.cueIdx === wantCue);
-      if (unitIdx < 0) unitIdx = 0;
-      hlNextAt = performance.now(); // start immediately, no delay
-          scheduleNextHl();
+    }
+    activeCueIdx = wantCue;
+  }
+
+  // AUDIO-DRIVEN highlights: check each unit against current audio time
+  // No setTimeout, no drift — just "is it time for this unit yet?"
+  if (wantCue >= 0 && unitAbsTimes.length > 0) {
+    for (let i = 0; i < stageUnits.length; i++) {
+      const u = stageUnits[i];
+      if (u.cueIdx !== wantCue) continue;
+      const schedTime = unitAbsTimes[i];
+      if (schedTime === null) continue;
+      if (t >= schedTime) {
+        u.el.classList.add('hl');
+      }
     }
   }
 
   rafId = requestAnimationFrame(rafLoop);
 }
 
-// ══════════════════════════════════════════
-// HIGHLIGHT TICKER
-// Uses a simple recursive setTimeout.
-// The key insight: we store the WALL CLOCK time each unit should fire at
-// (performance.now() + accumulated delay) and compensate for drift.
-// ══════════════════════════════════════════
-let hlNextAt = 0;
-
-function scheduleNextHl() {
-  if (!isPlaying) return;
-  const delay = Math.max(0, hlNextAt - performance.now());
-  // Use setTimeout directly — simple and reliable
-  // Drift compensation: we track hlNextAt as an absolute time
-  // so even if setTimeout fires late, the NEXT one fires early to catch up
-  setTimeout(hlTick, delay);
-}
-
-function hlTick() {
-  if (!isPlaying) return;
-  if (unitIdx >= stageUnits.length) return;
-  const u = stageUnits[unitIdx];
-  if (u.cueIdx !== activeCueIdx) return;
-  u.el.classList.add('hl');
-  unitIdx++;
-  const mode = document.getElementById('r-mode').value;
-  const globalSpd = mode === 'char'
-    ? parseInt(document.getElementById('r-csp').value)
-    : parseInt(document.getElementById('r-wsp').value);
-  const cue = cues[u.cueIdx];
-  const lineSpd = (cue && cue.lineSpeeds && cue.lineSpeeds[u.lineIdx] != null)
-    ? cue.lineSpeeds[u.lineIdx] : globalSpd;
-  hlNextAt += lineSpd; // advance absolute target time
-  scheduleNextHl();
-}
+// Highlights now driven by audio.currentTime in rafLoop — no separate timer needed
 
 // ══════════════════════════════════════════
 // PLAY / STOP
@@ -912,7 +917,10 @@ document.getElementById('r-stop').addEventListener('click', stopPlayback);
 function startPlayback() {
   if (!audioSrc || !cues.length) { alert('Set up audio and lyrics first!'); return; }
   stopPlayback();
-  if (!isRecording) buildStage(); // don't rebuild during recording
+  if (!isRecording) {
+    buildStage();
+    buildHighlightSchedule();
+  }
 
   audioEl = document.getElementById('audio-rec');
   audioEl.src = audioSrc;
@@ -926,11 +934,9 @@ function startPlayback() {
     audioStartOffset = 0;
   });
   audioEl.onended = () => {
-    // Only auto-stop playback, never auto-stop recording
-    // User must manually stop recording to avoid premature cuts
-    if (!isRecording) stopPlayback();
-    // If recording, just stop the highlight ticker but keep recording until user stops
-    else { isPlaying = false; }
+    isPlaying = false; // stop highlights
+    if (!isRecording) stopPlayback(); // only stop if not recording
+    // if recording: keep recording, user will press Stop & Save manually
   };
 
   activeCueIdx = -2; // sentinel: force hideCue on first frame
@@ -1038,28 +1044,23 @@ document.getElementById('r-record').addEventListener('click', async () => {
   if (!cues.length) { alert('Load lyrics first!'); return; }
 
   const stageEl = document.getElementById('stage');
-  const aspect  = stageEl.offsetWidth / stageEl.offsetHeight;
-  const capH    = 1080;
-  const capW    = Math.round(capH * aspect);
+  const capH = 1080;
+  const capW = Math.round(capH * stageEl.offsetWidth / stageEl.offsetHeight);
   recCanvas.width  = capW;
   recCanvas.height = capH;
 
-  // draw a clean green frame first
+  // Green first frame
   const ctx0 = recCanvas.getContext('2d');
   ctx0.fillStyle = '#00FF00';
   ctx0.fillRect(0, 0, capW, capH);
 
   let stream;
   try { stream = recCanvas.captureStream(30); }
-  catch(e) { alert('Not supported. Use Chrome.'); return; }
+  catch(e) { alert('Use Chrome browser for recording.'); return; }
 
-  // Try MP4 first (supported on Chrome Mac/iOS), fallback to WebM
   const mimeType = [
-    'video/mp4;codecs=avc1',
-    'video/mp4',
-    'video/webm;codecs=vp9',
-    'video/webm;codecs=vp8',
-    'video/webm'
+    'video/mp4;codecs=avc1', 'video/mp4',
+    'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'
   ].find(t => MediaRecorder.isTypeSupported(t)) || 'video/webm';
   const fileExt = mimeType.includes('mp4') ? 'mp4' : 'webm';
 
@@ -1070,61 +1071,37 @@ document.getElementById('r-record').addEventListener('click', async () => {
     mediaRecorder = new MediaRecorder(stream);
   }
 
-  mediaRecorder.ondataavailable = e => { if (e.data?.size > 0) recordedChunks.push(e.data); };
+  mediaRecorder.ondataavailable = e => {
+    if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+  };
 
   mediaRecorder.onstop = () => {
     clearInterval(recTimerInterval);
+    clearInterval(recCanvasInterval);
     isRecording = false;
-    cancelAnimationFrame(recRafId); recRafId = null;
-    const btn = document.getElementById('r-record');
-    btn.textContent = '⏺ Record'; btn.classList.remove('rec');
+    document.getElementById('r-record').textContent = '⏺ Record';
+    document.getElementById('r-record').classList.remove('rec');
     document.getElementById('rec-timer').classList.remove('on');
     if (!recordedChunks.length) { alert('Nothing recorded.'); return; }
-    // Calculate total recorded bytes for debug
-    const totalBytes = recordedChunks.reduce((s, c) => s + c.size, 0);
-    console.log('Recording stopped. Chunks:', recordedChunks.length, 'Total bytes:', totalBytes);
     const blob = new Blob(recordedChunks, { type: mimeType });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href = url; a.download = 'green-screen-lyrics.' + fileExt;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    setTimeout(() => URL.revokeObjectURL(url), 15000);
   };
 
   isRecording = true;
-  mediaRecorder.start(50); // smaller chunks = less data lost at stop boundary
+  mediaRecorder.start(100);
 
-  // Canvas loop: use rAF but yield to browser between frames
-  // This prevents it from blocking the highlight timer
-  let lastFrameTime = 0;
-  function recLoop(ts) {
-    if (!isRecording) return;
-    if (ts - lastFrameTime >= 33) { // max 30fps
-      lastFrameTime = ts;
-      drawCanvas();
-    }
-    recRafId = requestAnimationFrame(recLoop);
-  }
-  recRafId = requestAnimationFrame(recLoop);
+  // Canvas loop via setInterval - system clock, never throttled
+  recCanvasInterval = setInterval(drawCanvas, 1000 / 30);
 
-  // Reset audio to beginning and play fresh
-  if (audioEl) {
-    audioEl.currentTime = 0;
-    audioStartedAt = performance.now();
-    audioStartOffset = 0;
-    audioEl.play().catch(() => {});
-  }
-  // Reset highlight state
-  clearHL();
-  hideCue();
-  unitIdx = 0;
-  activeCueIdx = -1;
-  hlNextAt = performance.now();
-  isPlaying = true;
-  rafId = requestAnimationFrame(rafLoop);
+  // Start playback
+  startPlayback();
 
-  const btn = document.getElementById('r-record');
-  btn.textContent = '⏹ Stop & Save'; btn.classList.add('rec');
+  document.getElementById('r-record').textContent = '⏹ Stop & Save';
+  document.getElementById('r-record').classList.add('rec');
   const rt = document.getElementById('rec-timer');
   rt.classList.add('on'); rt.textContent = '00:00';
   const t0 = Date.now();
@@ -1136,21 +1113,14 @@ document.getElementById('r-record').addEventListener('click', async () => {
 
 
 function stopRecording() {
-  cancelAnimationFrame(recRafId);
-  recRafId = null;
-  stopPlayback();
-  if (!mediaRecorder || mediaRecorder.state === 'inactive') return;
-  // requestData flushes the current buffer as a final chunk BEFORE stop
-  // We must wait for that dataavailable to fire before stopping
-  mediaRecorder.addEventListener('dataavailable', () => {
-    if (mediaRecorder.state !== 'inactive') {
-      mediaRecorder.stop();
-    }
-  }, { once: true });
-  try { mediaRecorder.requestData(); } catch(e) {
-    try { mediaRecorder.stop(); } catch(e2) {}
+  clearInterval(recCanvasInterval);
+  recCanvasInterval = null;
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.stop(); // simple stop — onstop handles the rest
   }
+  stopPlayback();
 }
+
 
 // init
 goTab('setup');
