@@ -542,7 +542,7 @@ function getVideoScreenRect() {
   const bgv = document.getElementById('bg-video');
   const sw  = document.getElementById('stage');
   if (!bgv || !sw || !bgv.videoWidth) {
-    return { x:0, y:0, w:sw.offsetWidth, h:sw.offsetHeight };
+    return { x:0, y:0, w:sw?sw.offsetWidth:0, h:sw?sw.offsetHeight:0 };
   }
   const swW=sw.offsetWidth, swH=sw.offsetHeight;
   const vAsp=bgv.videoWidth/bgv.videoHeight, sAsp=swW/swH;
@@ -1219,7 +1219,7 @@ document.getElementById('export-btn').addEventListener('click', async ()=>{
   const ext=mimeType.startsWith('video/mp4')?'mp4':'webm';
 
   recordedChunks=[];
-  try{mediaRecorder=new MediaRecorder(stream,{mimeType,videoBitsPerSecond:40000000}); // 40Mbps for 4K}
+  try{mediaRecorder=new MediaRecorder(stream,{mimeType,videoBitsPerSecond:40000000});} // 40Mbps for 4K
   catch(e){mediaRecorder=new MediaRecorder(stream);}
 
   mediaRecorder.ondataavailable=e=>{if(e.data?.size>0)recordedChunks.push(e.data);};
