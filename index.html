@@ -183,26 +183,28 @@ canvas { display:none; }
 
 <script>
 // ══════════════════════════════════════════
-// GLOBAL STATE
+// STATE
 // ══════════════════════════════════════════
 let audioSrc = null;
-let cues = []; // [{lines, startTime, endTime}]
-
-// playback
-let audioEl = null;        // the active audio element for preview/record
+let cues = [];
+let audioEl = null;
 let isPlaying = false;
-let rafId = null;          // requestAnimationFrame loop id
-// hlTimer replaced by MessageChannel (_mc)
-let activeCueIdx = -1;     // which cue is currently shown (-1 = none/green)
-let unitIdx = 0;           // next unit to highlight
-let stageUnits = [];       // [{el, cueIdx}]
-
-// recording
+let rafId = null;
+let activeCueIdx = -1;
+let unitIdx = 0;
+let stageUnits = [];
 let isRecording = false;
 let mediaRecorder = null;
 let recordedChunks = [];
+let recCanvasInterval = null;
 let recTimerInterval = null;
-let recCanvasTimer = null;
+let audioStartedAt = 0;
+let audioStartOffset = 0;
+let hlNextAt = 0;
+let hlTimerId = null;
+let seekDragging = false;
+let dragSrcIdx = null;
+let tapIdx = 0;
 
 // ══════════════════════════════════════════
 // TABS
@@ -215,49 +217,35 @@ function goTab(name) {
   if (name === 'record') requestAnimationFrame(() => requestAnimationFrame(fixStageHeight));
 }
 
-function fixStageHeight() {
-  const sw = document.getElementById('stage-wrap');
-  if (!sw || sw.style.display === 'none') return;
-  // Measure all visible elements above stage-wrap
-  let usedH = 0;
-  // tabs
-  const tabs = document.getElementById('tabs');
-  if (tabs) usedH += tabs.getBoundingClientRect().height;
-  // ctrl-bar (inside panel-record)
-  const ctrlBar = document.getElementById('ctrl-bar');
-  if (ctrlBar) usedH += ctrlBar.getBoundingClientRect().height;
-  // seek wrap is inside ctrl-bar already counted
-  // line-speeds-panel if visible
-  const sp = document.getElementById('line-speeds-panel');
-  if (sp && sp.style.display !== 'none') usedH += sp.getBoundingClientRect().height;
-  // remaining
-  const remaining = window.innerHeight - usedH;
-  const h = Math.max(150, remaining);
-  sw.style.height = h + 'px';
-  stage.style.height = h + 'px';
-}
-window.addEventListener('resize', fixStageHeight);
 document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
   const name = t.dataset.tab;
-  // going back to setup: restore lyrics text from cues so nothing is lost
   if (name === 'setup' && cues.length > 0) {
-    const textarea = document.getElementById('lyrics-input');
-    textarea.value = cues.map(c => c.lines.join('\n')).join('\n\n');
+    document.getElementById('lyrics-input').value = cues.map(c => c.lines.join('\n')).join('\n\n');
   }
-  // going to record tab
   if (name === 'record' && cues.length > 0) {
-    finalizeCues();
-    syncControlsToRecord();
-    buildStage();
-    buildLineSpeeds();
+    finalizeCues(); syncControlsToRecord(); buildStage(); buildLineSpeeds();
   }
-  // going back to sync tab
   if (name === 'sync' && cues.length > 0) {
-    renderTimingList();
-    updateTapUI();
+    renderTimingList(); updateTapUI();
   }
   goTab(name);
 }));
+
+function fixStageHeight() {
+  const sw = document.getElementById('stage-wrap');
+  if (!sw || sw.style.display === 'none') return;
+  let usedH = 0;
+  const tabs = document.getElementById('tabs');
+  if (tabs) usedH += tabs.getBoundingClientRect().height;
+  const ctrlBar = document.getElementById('ctrl-bar');
+  if (ctrlBar) usedH += ctrlBar.getBoundingClientRect().height;
+  const sp = document.getElementById('line-speeds-panel');
+  if (sp) usedH += sp.getBoundingClientRect().height;
+  const remaining = Math.max(150, window.innerHeight - usedH);
+  sw.style.height = remaining + 'px';
+  document.getElementById('stage').style.height = remaining + 'px';
+}
+window.addEventListener('resize', fixStageHeight);
 
 // ══════════════════════════════════════════
 // AUDIO UPLOAD
@@ -284,17 +272,12 @@ function loadAudio(file) {
 // ══════════════════════════════════════════
 // SETUP SLIDERS
 // ══════════════════════════════════════════
-const setupSliders = [
-  ['s-wsp','s-wsp-v',''],['s-csp','s-csp-v',''],['s-cpause','s-cpause-v','ms'],['s-font','s-font-v','vw']
-];
-setupSliders.forEach(([id,vid,suf]) => {
-  document.getElementById(id).addEventListener('input', e => {
-    document.getElementById(vid).textContent = e.target.value + suf;
-  });
+[['s-wsp','s-wsp-v',''],['s-csp','s-csp-v',''],['s-cpause','s-cpause-v','ms'],['s-font','s-font-v','vw']].forEach(([id,vid,suf]) => {
+  document.getElementById(id).addEventListener('input', e => { document.getElementById(vid).textContent = e.target.value + suf; });
 });
 
 // ══════════════════════════════════════════
-// SETUP → NEXT
+// LOAD LYRICS
 // ══════════════════════════════════════════
 document.getElementById('setup-go').addEventListener('click', () => {
   const raw = document.getElementById('lyrics-input').value.trim();
@@ -302,7 +285,6 @@ document.getElementById('setup-go').addEventListener('click', () => {
   if (!audioSrc) { err.textContent = '⚠ Upload audio first'; return; }
   if (!raw) { err.textContent = '⚠ Paste lyrics first'; return; }
   err.textContent = '';
-
   cues = [];
   let cur = [];
   raw.split('\n').forEach(line => {
@@ -311,9 +293,7 @@ document.getElementById('setup-go').addEventListener('click', () => {
     else cur.push(t);
   });
   if (cur.length) cues.push({lines:[...cur], startTime:null, endTime:null, lineSpeeds:[]});
-  // ensure lineSpeeds array matches lines length
   cues.forEach(c => { while(c.lineSpeeds.length < c.lines.length) c.lineSpeeds.push(null); });
-
   initTapSync();
   goTab('sync');
 });
@@ -321,7 +301,6 @@ document.getElementById('setup-go').addEventListener('click', () => {
 // ══════════════════════════════════════════
 // TAP SYNC
 // ══════════════════════════════════════════
-let tapIdx = 0;
 const tapCueEl  = document.getElementById('tap-cue');
 const tapNextEl = document.getElementById('tap-next');
 const tapProgEl = document.getElementById('tap-prog');
@@ -330,181 +309,133 @@ const tapUndo   = document.getElementById('tap-undo');
 const syncAudio = document.getElementById('audio-sync');
 
 function initTapSync() {
-  // Only reset if genuinely starting fresh (no timings yet)
-  const alreadyTapped = cues.filter(c => c.startTime !== null).length;
-  if (alreadyTapped === 0) {
-    tapIdx = 0;
-    cues.forEach(c => c.startTime = null);
-  } else {
-    tapIdx = alreadyTapped; // resume from where we left off
-  }
+  const already = cues.filter(c => c.startTime !== null).length;
+  tapIdx = already > 0 ? already : 0;
+  if (already === 0) cues.forEach(c => c.startTime = null);
   tapBtn.disabled = tapIdx >= cues.length;
   tapUndo.disabled = tapIdx === 0;
-  updateTapUI();
-  renderTimingList();
+  updateTapUI(); renderTimingList();
 }
 
 function updateTapUI() {
   if (tapIdx >= cues.length) {
     tapCueEl.textContent = '✅ All cues tapped!';
-    tapNextEl.textContent = '';
-    tapBtn.disabled = true;
+    tapNextEl.textContent = ''; tapBtn.disabled = true;
   } else {
     tapCueEl.textContent = cues[tapIdx].lines.join('  |  ');
     tapNextEl.textContent = tapIdx+1 < cues.length ? 'Next → ' + cues[tapIdx+1].lines.join(' | ') : '(last cue)';
     tapBtn.disabled = false;
   }
-  const tappedCount = cues.filter(c => c.startTime !== null).length;
-  tapProgEl.textContent = tappedCount + ' / ' + cues.length + ' tapped';
+  tapProgEl.textContent = tapIdx + ' / ' + cues.length;
 }
 
 function doTap() {
   if (tapIdx >= cues.length) return;
   cues[tapIdx].startTime = parseFloat(syncAudio.currentTime.toFixed(2));
-  console.log('Tapped cue', tapIdx, 'at', cues[tapIdx].startTime, 'sec');
   tapIdx++;
   tapUndo.disabled = false;
-  updateTapUI();
-  renderTimingList();
-  // show tapped time feedback
-  const lastT = cues[tapIdx-1].startTime;
-  tapProgEl.textContent = (cues.filter(c=>c.startTime!==null).length) + ' / ' + cues.length + ' tapped — last: ' + secsToMmss(lastT);
+  updateTapUI(); renderTimingList();
+  const last = cues[tapIdx-1].startTime;
+  tapProgEl.textContent = (tapIdx) + ' / ' + cues.length + ' — last: ' + secsToMmss(last);
 }
 
 tapBtn.addEventListener('click', doTap);
 tapUndo.addEventListener('click', () => {
   if (tapIdx === 0) return;
-  tapIdx--;
-  cues[tapIdx].startTime = null;
+  tapIdx--; cues[tapIdx].startTime = null;
   if (tapIdx === 0) tapUndo.disabled = true;
-  updateTapUI();
-  renderTimingList();
+  updateTapUI(); renderTimingList();
 });
 document.getElementById('tap-reset').addEventListener('click', () => {
   tapIdx = 0; cues.forEach(c => c.startTime = null);
-  tapUndo.disabled = true;
-  updateTapUI(); renderTimingList();
+  tapUndo.disabled = true; updateTapUI(); renderTimingList();
 });
 document.getElementById('add-cue-btn').addEventListener('click', () => {
-  cues.push({lines:['NEW LINE'], startTime:null, endTime:null});
+  cues.push({lines:['NEW LINE'], startTime:null, endTime:null, lineSpeeds:[null]});
   renderTimingList();
 });
 document.addEventListener('keydown', e => {
-  if (e.code==='Enter' && document.getElementById('panel-sync').classList.contains('active')
+  if (e.code === 'Enter' && document.getElementById('panel-sync').classList.contains('active')
       && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
     e.preventDefault(); doTap();
   }
 });
 
+// ══════════════════════════════════════════
+// TIMING HELPERS
+// ══════════════════════════════════════════
 function secsToMmss(s) {
   if (s === null || s === undefined || isNaN(s)) return '';
-  const m = Math.floor(s / 60);
-  const sec = (s % 60).toFixed(1).padStart(4, '0');
-  return m + ':' + sec;
+  return Math.floor(s/60) + ':' + (s%60).toFixed(1).padStart(4,'0');
 }
 function mmssToSecs(str) {
   if (!str || !str.trim()) return null;
   str = str.trim();
-  if (str.includes(':')) {
-    const parts = str.split(':');
-    const m = parseFloat(parts[0]) || 0;
-    const s = parseFloat(parts[1]) || 0;
-    return parseFloat((m * 60 + s).toFixed(2));
-  }
-  const v = parseFloat(str);
-  return isNaN(v) ? null : v;
+  if (str.includes(':')) { const p = str.split(':'); return parseFloat((parseFloat(p[0])*60 + parseFloat(p[1])).toFixed(2)); }
+  const v = parseFloat(str); return isNaN(v) ? null : v;
 }
 
-let dragSrcIdx = null;
-
+// ══════════════════════════════════════════
+// TIMING LIST
+// ══════════════════════════════════════════
+let dragSrcIdxTiming = null;
 function renderTimingList() {
   const list = document.getElementById('timing-list');
   list.innerHTML = '';
   cues.forEach((cue, i) => {
     const row = document.createElement('div');
-    row.className = 'tr';
-    row.draggable = true;
-    row.dataset.i = i;
-    row.innerHTML = `
-      <span class="drag-handle" title="Drag to reorder">⠿</span>
+    row.className = 'tr'; row.draggable = true; row.dataset.i = i;
+    row.innerHTML = `<span class="drag-handle" title="Drag to reorder">⠿</span>
       <span class="ti">#${i+1}</span>
-      <span class="tt"><input type="text" value="${secsToMmss(cue.startTime)}" placeholder="m:ss" data-i="${i}" style="width:62px;font-size:0.76rem;" title="m:ss or seconds"></span>
+      <span class="tt"><input type="text" value="${secsToMmss(cue.startTime)}" placeholder="m:ss" data-i="${i}" style="width:62px;font-size:0.76rem;"></span>
       <span class="tx">${cue.lines.join(' | ')}</span>
-      <span class="td" data-i="${i}" title="Clear timing">✕</span>`;
-
-    // drag events
-    row.addEventListener('dragstart', e => {
-      dragSrcIdx = i;
-      row.classList.add('dragging');
-      e.dataTransfer.effectAllowed = 'move';
-    });
-    row.addEventListener('dragend', () => {
-      row.classList.remove('dragging');
-      list.querySelectorAll('.tr').forEach(r => r.classList.remove('drag-over'));
-    });
-    row.addEventListener('dragover', e => {
-      e.preventDefault();
-      list.querySelectorAll('.tr').forEach(r => r.classList.remove('drag-over'));
-      row.classList.add('drag-over');
-    });
+      <span class="td" data-i="${i}">✕</span>`;
+    row.addEventListener('dragstart', e => { dragSrcIdxTiming = i; row.classList.add('dragging'); e.dataTransfer.effectAllowed='move'; });
+    row.addEventListener('dragend', () => { row.classList.remove('dragging'); list.querySelectorAll('.tr').forEach(r => r.classList.remove('drag-over')); });
+    row.addEventListener('dragover', e => { e.preventDefault(); list.querySelectorAll('.tr').forEach(r => r.classList.remove('drag-over')); row.classList.add('drag-over'); });
     row.addEventListener('drop', e => {
       e.preventDefault();
-      if (dragSrcIdx === null || dragSrcIdx === i) return;
-      // reorder cues array
-      const moved = cues.splice(dragSrcIdx, 1)[0];
+      if (dragSrcIdxTiming === null || dragSrcIdxTiming === i) return;
+      const moved = cues.splice(dragSrcIdxTiming, 1)[0];
       cues.splice(i, 0, moved);
-      // fix tapIdx
       tapIdx = cues.filter(c => c.startTime !== null).length;
-      dragSrcIdx = null;
-      renderTimingList();
-      updateTapUI();
+      dragSrcIdxTiming = null; renderTimingList(); updateTapUI();
     });
-
     list.appendChild(row);
   });
-
-  // input change
   list.querySelectorAll('input').forEach(inp => inp.addEventListener('change', e => {
     const i = +e.target.dataset.i;
     cues[i].startTime = mmssToSecs(e.target.value);
     e.target.value = secsToMmss(cues[i].startTime);
   }));
-
-  // delete (✕) — clears timing only, does NOT remove the cue
   list.querySelectorAll('.td').forEach(btn => btn.addEventListener('click', e => {
     e.stopPropagation();
     const i = +e.target.dataset.i;
     cues[i].startTime = null;
     if (tapIdx > i) tapIdx = i;
     tapIdx = Math.min(tapIdx, cues.length);
-    renderTimingList();
-    updateTapUI();
+    renderTimingList(); updateTapUI();
   }));
 }
 
 // ══════════════════════════════════════════
-// SYNC → RECORD TAB
+// SYNC → RECORD
 // ══════════════════════════════════════════
 document.getElementById('sync-go').addEventListener('click', () => {
   if (!cues.some(c => c.startTime !== null)) { alert('Tap at least one cue!'); return; }
-  finalizeCues();
-  syncControlsToRecord();
-  buildStage();
-  buildLineSpeeds();
+  finalizeCues(); syncControlsToRecord(); buildStage(); buildLineSpeeds();
   goTab('record');
   setTimeout(() => { fixStageHeight(); startPlayback(); }, 150);
 });
 document.getElementById('sync-back').addEventListener('click', () => goTab('setup'));
 
 function finalizeCues() {
-  // only sort cues that have timings; preserve order of untimed ones
   const timed = cues.filter(c => c.startTime !== null);
   const untimed = cues.filter(c => c.startTime === null);
   timed.sort((a,b) => a.startTime - b.startTime);
   cues.length = 0;
   timed.forEach(c => cues.push(c));
   untimed.forEach(c => cues.push(c));
-  // compute endTimes
   cues.forEach((c,i) => {
     c.endTime = (i+1 < cues.length && cues[i+1].startTime !== null) ? cues[i+1].startTime : null;
     if (!c.lineSpeeds) c.lineSpeeds = [];
@@ -513,177 +444,11 @@ function finalizeCues() {
 }
 
 function syncControlsToRecord() {
-  const map = [['s-mode','r-mode'],['s-wsp','r-wsp'],['s-csp','r-csp'],['s-cpause','r-cpause'],['s-font','r-font']];
-  map.forEach(([from,to]) => {
-    const fe = document.getElementById(from), te = document.getElementById(to);
+  [['s-mode','r-mode'],['s-wsp','r-wsp'],['s-csp','r-csp'],['s-cpause','r-cpause'],['s-font','r-font']].forEach(([f,t]) => {
+    const fe = document.getElementById(f), te = document.getElementById(t);
     if (fe && te) te.value = fe.value;
   });
   updateRecLabels();
-  buildLineSpeeds();
-}
-
-function buildLineSpeeds() {
-  const panel = document.getElementById('line-speeds-panel');
-  const list  = document.getElementById('line-speeds-list');
-  if (!cues.length) { list.innerHTML = '<span style="font-size:0.72rem;color:#333;">Load lyrics in Setup tab first</span>'; return; }
-  list.innerHTML = '';
-   // recompute after panel height changes
-
-  const defaultSpd = parseInt(document.getElementById('r-wsp').value) || 350;
-
-  cues.forEach((cue, ci) => {
-    if (!cue.lineSpeeds) cue.lineSpeeds = [];
-    while (cue.lineSpeeds.length < cue.lines.length) cue.lineSpeeds.push(null);
-
-    cue.lines.forEach((line, li) => {
-      const spd = cue.lineSpeeds[li] !== null ? cue.lineSpeeds[li] : defaultSpd;
-
-      // slider is INVERTED: right=fast(low ms), left=slow(high ms)
-      // so we store actual ms but display inverted slider
-      // inverted value = max + min - actual = 1200 + 40 - spd = 1240 - spd
-      // inverted slider: right=fast(40ms) left=slow(1500ms)
-
-      const row = document.createElement('div');
-      row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:3px 6px;border-bottom:1px solid #0f0f22;cursor:pointer;transition:background 0.12s;';
-      row.addEventListener('mouseenter', () => row.style.background='#0f0f28');
-      row.addEventListener('mouseleave', () => row.style.background='');
-
-      // click lyric text → jump preview to this cue
-      row.addEventListener('click', (e) => {
-        if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
-        jumpPreviewToCue(ci);
-      });
-
-      // C1L1 label
-      const lbl = document.createElement('span');
-      lbl.style.cssText = 'font-size:0.66rem;color:#444;min-width:40px;flex-shrink:0;font-weight:700;';
-      lbl.textContent = 'C'+(ci+1)+'L'+(li+1);
-      row.appendChild(lbl);
-
-      // lyric text — clickable
-      const txt = document.createElement('span');
-      txt.style.cssText = 'font-size:0.76rem;color:#ccc;width:220px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;cursor:pointer;';
-      txt.title = 'Click to jump preview here';
-      txt.textContent = line;
-      row.appendChild(txt);
-
-      // SLOW label
-      const slowLbl = document.createElement('span');
-      slowLbl.style.cssText = 'font-size:0.62rem;color:#555;flex-shrink:0;';
-      slowLbl.textContent = '🐌';
-      row.appendChild(slowLbl);
-
-      // inverted slider: left=slow(1200ms), right=fast(40ms)
-      const slider = document.createElement('input');
-      slider.type = 'range'; slider.min = 40; slider.max = 1500;
-      slider.value = 1540 - spd; slider.step = 10;
-      slider.style.cssText = 'width:120px;flex-shrink:0;accent-color:#e94560;';
-
-      // FAST label
-      const fastLbl = document.createElement('span');
-      fastLbl.style.cssText = 'font-size:0.62rem;color:#555;flex-shrink:0;';
-      fastLbl.textContent = '⚡';
-      row.appendChild(slider);
-      row.appendChild(fastLbl);
-
-      // speed label
-      const speedLbl = document.createElement('span');
-      speedLbl.style.cssText = 'font-size:0.68rem;color:#2ecc71;font-weight:700;min-width:68px;flex-shrink:0;';
-      speedLbl.textContent = getSpeedLabel(spd);
-      row.appendChild(speedLbl);
-
-      // manual number input box
-      const numInput = document.createElement('input');
-      numInput.type = 'number';
-      numInput.min = 40; numInput.max = 1500; numInput.step = 10;
-      numInput.value = spd;
-      numInput.style.cssText = 'width:54px;font-size:0.76rem;background:#0f3460;border:1px solid #e94560;border-radius:4px;color:#fff;padding:2px 4px;text-align:center;flex-shrink:0;outline:none;';
-      numInput.title = 'Type ms value directly';
-      row.appendChild(numInput);
-
-      // reset btn
-      const resetBtn = document.createElement('button');
-      resetBtn.className = 'sec';
-      resetBtn.textContent = '↺';
-      resetBtn.title = 'Reset to default';
-      resetBtn.style.cssText = 'font-size:0.6rem;padding:2px 5px;flex-shrink:0;';
-      row.appendChild(resetBtn);
-
-      // edit btn
-      const editBtn = document.createElement('button');
-      editBtn.className = 'sec';
-      editBtn.textContent = '✏';
-      editBtn.title = 'Edit this line';
-      editBtn.style.cssText = 'font-size:0.7rem;padding:2px 5px;flex-shrink:0;background:#1a3a1a;border-color:#2ecc71;';
-      row.appendChild(editBtn);
-
-      // central apply function keeps slider + numInput + label in sync
-      function applySpeed(ms) {
-        ms = Math.min(1500, Math.max(40, Math.round(ms / 10) * 10));
-        cue.lineSpeeds[li] = ms;
-        slider.value = 1540 - ms;
-        numInput.value = ms;
-        speedLbl.textContent = getSpeedLabel(ms);
-      }
-
-      slider.addEventListener('input', () => applySpeed(1540 - parseInt(slider.value)));
-
-      numInput.addEventListener('change', () => {
-        const v = parseInt(numInput.value);
-        if (!isNaN(v)) applySpeed(v);
-      });
-      numInput.addEventListener('keydown', e => {
-        if (e.key === 'Enter') { const v = parseInt(numInput.value); if (!isNaN(v)) applySpeed(v); }
-      });
-
-      resetBtn.addEventListener('click', () => {
-        const def = parseInt(document.getElementById('r-wsp').value) || 350;
-        applySpeed(def);
-        cue.lineSpeeds[li] = null; // null = follow global
-      });
-
-      editBtn.addEventListener('click', () => {
-        const newText = prompt('Edit line:', line);
-        if (newText === null) return;
-        cue.lines[li] = newText.trim() || line;
-        buildStage();
-        buildLineSpeeds();
-      });
-
-      list.appendChild(row);
-    });
-  });
-}
-
-function jumpPreviewToCue(ci) {
-  if (!cues[ci] || cues[ci].startTime === null) return;
-  // seek audio to cue start time
-  if (audioEl) {
-    audioEl.currentTime = cues[ci].startTime;
-    audioStartedAt = performance.now();
-    audioStartOffset = cues[ci].startTime;
-  }
-  // reset highlight state
-  clearHL(); hideCue();
-  activeCueIdx = -1;
-  unitIdx = stageUnits.findIndex(u => u.cueIdx === ci);
-  if (unitIdx < 0) unitIdx = 0;
-  // if not already playing, start
-  if (!isPlaying) {
-    if (audioEl) audioEl.play().catch(()=>{});
-    isPlaying = true;
-    hlNextAt = performance.now();
-    rafId = requestAnimationFrame(rafLoop);
-  }
-}
-
-function getSpeedLabel(ms) {
-  if (ms <= 80)   return '⚡ Very Fast';
-  if (ms <= 160)  return '🔥 Fast';
-  if (ms <= 300)  return '▶ Normal';
-  if (ms <= 700)  return '🐢 Slow';
-  if (ms <= 1100) return '🐌 Very Slow';
-  return '🐌🐌 Ultra Slow';
 }
 
 // ══════════════════════════════════════════
@@ -698,49 +463,39 @@ function updateRecLabels() {
 [['r-wsp','r-wsp-v',''],['r-csp','r-csp-v',''],['r-cpause','r-cpause-v','ms'],['r-font','r-font-v','vw']].forEach(([id,vid,suf]) => {
   document.getElementById(id).addEventListener('input', e => {
     document.getElementById(vid).textContent = e.target.value + suf;
-    // update font live
-    if (id==='r-font') document.querySelectorAll('.ch').forEach(c => c.style.fontSize = e.target.value+'vw');
+    if (id === 'r-font') document.querySelectorAll('.ch').forEach(c => c.style.fontSize = e.target.value+'vw');
   });
 });
 
 // ══════════════════════════════════════════
-// BUILD STAGE DOM
+// BUILD STAGE
 // ══════════════════════════════════════════
 const stageInner = document.getElementById('stage-inner');
-
 function buildStage() {
-  stageInner.innerHTML = '';
-  stageUnits = [];
+  stageInner.innerHTML = ''; stageUnits = [];
   const fs = document.getElementById('r-font').value + 'vw';
   const mode = document.getElementById('r-mode').value;
-
   cues.forEach((cue, cIdx) => {
     const div = document.createElement('div');
-    div.className = 'cue-div';
-    div.dataset.cue = cIdx;
-
+    div.className = 'cue-div'; div.dataset.cue = cIdx;
     cue.lines.forEach((line, li) => {
       const span = document.createElement('span');
       span.className = 'sl-line';
-
       if (mode === 'word') {
         line.split(/\s+/).forEach((w, wi) => {
           if (wi>0) { const s=document.createElement('span'); s.className='ch sp'; s.textContent=' '; s.style.fontSize=fs; span.appendChild(s); }
           const s = document.createElement('span');
           s.className='ch'; s.textContent=w; s.style.fontSize=fs;
-          span.appendChild(s);
-          stageUnits.push({el:s, cueIdx:cIdx, lineIdx:li});
+          span.appendChild(s); stageUnits.push({el:s, cueIdx:cIdx, lineIdx:li});
         });
       } else {
-        for (let ci=0;ci<line.length;ci++) {
-          const ch=line[ci];
-          const s=document.createElement('span');
+        for (let ci=0; ci<line.length; ci++) {
+          const ch=line[ci]; const s=document.createElement('span');
           s.className=ch===' '?'ch sp':'ch'; s.textContent=ch; s.style.fontSize=fs;
           span.appendChild(s);
           if (ch!==' ') stageUnits.push({el:s, cueIdx:cIdx, lineIdx:li});
         }
       }
-
       div.appendChild(span);
       if (li < cue.lines.length-1) div.appendChild(document.createElement('br'));
     });
@@ -748,26 +503,85 @@ function buildStage() {
   });
 }
 
-// ══════════════════════════════════════════
-// SHOW/HIDE CUE ON STAGE
-// ══════════════════════════════════════════
-function showCue(idx) { showCueEl(idx); }
-function hideCue() {
-  document.querySelectorAll('.cue-div').forEach(el => {
-    el.classList.remove('on');
-    el.style.display = 'none'; // belt + suspenders
-  });
-  activeCueIdx = -1;
-}
 function showCueEl(idx) {
-  document.querySelectorAll('.cue-div').forEach((el,i) => {
-    el.classList.toggle('on', i===idx);
-    el.style.display = i===idx ? 'block' : 'none';
-  });
+  document.querySelectorAll('.cue-div').forEach((el,i) => { el.classList.toggle('on', i===idx); el.style.display = i===idx?'block':'none'; });
   activeCueIdx = idx;
 }
-function clearHL() {
-  document.querySelectorAll('.ch').forEach(c => c.classList.remove('hl'));
+function hideCue() {
+  document.querySelectorAll('.cue-div').forEach(el => { el.classList.remove('on'); el.style.display='none'; });
+  activeCueIdx = -1;
+}
+function clearHL() { document.querySelectorAll('.ch').forEach(c => c.classList.remove('hl')); }
+
+// ══════════════════════════════════════════
+// LINE SPEEDS PANEL
+// ══════════════════════════════════════════
+function buildLineSpeeds() {
+  const panel = document.getElementById('line-speeds-panel');
+  const list  = document.getElementById('line-speeds-list');
+  if (!cues.length) { list.innerHTML = '<span style="font-size:0.72rem;color:#333;">Load lyrics first</span>'; return; }
+  list.innerHTML = '';
+  const defSpd = parseInt(document.getElementById('r-wsp').value) || 350;
+  cues.forEach((cue, ci) => {
+    if (!cue.lineSpeeds) cue.lineSpeeds = [];
+    while (cue.lineSpeeds.length < cue.lines.length) cue.lineSpeeds.push(null);
+    cue.lines.forEach((line, li) => {
+      const spd = cue.lineSpeeds[li] !== null ? cue.lineSpeeds[li] : defSpd;
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:3px 6px;border-bottom:1px solid #111;cursor:pointer;';
+      row.addEventListener('mouseenter', () => row.style.background='#0f0f28');
+      row.addEventListener('mouseleave', () => row.style.background='');
+      row.addEventListener('click', e => { if (e.target.tagName==='INPUT'||e.target.tagName==='BUTTON') return; jumpPreviewToCue(ci); });
+      const lbl = document.createElement('span');
+      lbl.style.cssText='font-size:0.66rem;color:#444;min-width:40px;font-weight:700;flex-shrink:0;';
+      lbl.textContent = 'C'+(ci+1)+'L'+(li+1); row.appendChild(lbl);
+      const txt = document.createElement('span');
+      txt.style.cssText='font-size:0.76rem;color:#ccc;width:200px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;';
+      txt.textContent = line; row.appendChild(txt);
+      const slowL = document.createElement('span'); slowL.style.cssText='font-size:0.62rem;color:#555;flex-shrink:0;'; slowL.textContent='🐌'; row.appendChild(slowL);
+      const slider = document.createElement('input');
+      slider.type='range'; slider.min=40; slider.max=1500; slider.value=1540-spd; slider.step=10;
+      slider.style.cssText='width:110px;flex-shrink:0;accent-color:#e94560;'; row.appendChild(slider);
+      const fastL = document.createElement('span'); fastL.style.cssText='font-size:0.62rem;color:#555;flex-shrink:0;'; fastL.textContent='⚡'; row.appendChild(fastL);
+      const numInput = document.createElement('input');
+      numInput.type='number'; numInput.min=40; numInput.max=1500; numInput.step=10; numInput.value=spd;
+      numInput.style.cssText='width:52px;font-size:0.74rem;background:#0f3460;border:1px solid #e94560;border-radius:4px;color:#fff;padding:2px 4px;text-align:center;flex-shrink:0;outline:none;';
+      row.appendChild(numInput);
+      const spdLbl = document.createElement('span');
+      spdLbl.style.cssText='font-size:0.68rem;color:#2ecc71;font-weight:700;min-width:68px;flex-shrink:0;';
+      spdLbl.textContent = getSpeedLabel(spd); row.appendChild(spdLbl);
+      const resetBtn = document.createElement('button'); resetBtn.className='sec'; resetBtn.textContent='↺'; resetBtn.style.cssText='font-size:0.6rem;padding:2px 5px;flex-shrink:0;'; row.appendChild(resetBtn);
+      const editBtn = document.createElement('button'); editBtn.className='sec'; editBtn.textContent='✏'; editBtn.style.cssText='font-size:0.7rem;padding:2px 5px;flex-shrink:0;background:#1a3a1a;border-color:#2ecc71;'; row.appendChild(editBtn);
+      function applySpeed(ms) {
+        ms = Math.min(1500, Math.max(40, Math.round(ms/10)*10));
+        cue.lineSpeeds[li] = ms; slider.value = 1540-ms; numInput.value = ms; spdLbl.textContent = getSpeedLabel(ms);
+      }
+      slider.addEventListener('input', () => applySpeed(1540 - parseInt(slider.value)));
+      numInput.addEventListener('change', () => { const v=parseInt(numInput.value); if (!isNaN(v)) applySpeed(v); });
+      resetBtn.addEventListener('click', () => { applySpeed(defSpd); cue.lineSpeeds[li]=null; });
+      editBtn.addEventListener('click', () => { const t=prompt('Edit line:', line); if (t===null) return; cue.lines[li]=t.trim()||line; buildStage(); buildLineSpeeds(); });
+      list.appendChild(row);
+    });
+  });
+  setTimeout(fixStageHeight, 50);
+}
+
+function getSpeedLabel(ms) {
+  if (ms<=80) return '⚡ Very Fast';
+  if (ms<=160) return '🔥 Fast';
+  if (ms<=300) return '▶ Normal';
+  if (ms<=700) return '🐢 Slow';
+  if (ms<=1100) return '🐌 Very Slow';
+  return '🐌🐌 Ultra Slow';
+}
+
+function jumpPreviewToCue(ci) {
+  if (!cues[ci] || cues[ci].startTime === null) return;
+  if (audioEl) { audioEl.currentTime = cues[ci].startTime; audioStartedAt = performance.now(); audioStartOffset = cues[ci].startTime; }
+  clearHL(); hideCue(); activeCueIdx = -1;
+  unitIdx = stageUnits.findIndex(u => u.cueIdx === ci);
+  if (unitIdx < 0) unitIdx = 0;
+  if (!isPlaying) { if (audioEl) audioEl.play().catch(()=>{}); isPlaying = true; hlNextAt = performance.now(); rafId = requestAnimationFrame(rafLoop); }
 }
 
 // ══════════════════════════════════════════
@@ -775,139 +589,87 @@ function clearHL() {
 // ══════════════════════════════════════════
 const seekBar = document.getElementById('seek-bar');
 const timeLabel = document.getElementById('time-label');
-let seekDragging = false;
-
 seekBar.addEventListener('mousedown', () => seekDragging = true);
 seekBar.addEventListener('touchstart', () => seekDragging = true, {passive:true});
 seekBar.addEventListener('mouseup', () => { seekDragging = false; seekTo(parseFloat(seekBar.value)); });
 seekBar.addEventListener('touchend', () => { seekDragging = false; seekTo(parseFloat(seekBar.value)); });
-seekBar.addEventListener('input', () => {
-  if (audioEl) {
-    const t = parseFloat(seekBar.value);
-    timeLabel.textContent = fmt(t) + ' / ' + fmt(audioEl.duration||0);
-  }
-});
+seekBar.addEventListener('input', () => { if (audioEl) timeLabel.textContent = fmt(parseFloat(seekBar.value))+' / '+fmt(audioEl.duration||0); });
 
 function seekTo(t) {
   if (!audioEl || !isFinite(t)) return;
-  audioEl.currentTime = t;
-  audioStartedAt = performance.now();
-  audioStartOffset = t;
-  clearHL();
-  unitIdx = 0;
-  hideCue();
-  activeCueIdx = -1;
+  audioEl.currentTime = t; audioStartedAt = performance.now(); audioStartOffset = t;
+  clearHL(); hideCue(); activeCueIdx = -1;
 }
-
-function fmt(s) {
-  if (!isFinite(s)) return '0:00';
-  const m = Math.floor(s/60), sec = Math.floor(s%60);
-  return m+':'+String(sec).padStart(2,'0');
-}
+function fmt(s) { if (!isFinite(s)) return '0:00'; return Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0'); }
 
 function updateSeekBar(t) {
   if (!audioEl || seekDragging) return;
-  if (t === undefined) t = audioEl.currentTime;
+  if (t===undefined) t = audioEl.currentTime;
   const d = audioEl.duration||0;
-  seekBar.max = d;
-  seekBar.value = t;
-  // gradient fill
+  seekBar.max = d; seekBar.value = t;
   const pct = d ? (t/d*100) : 0;
-  seekBar.style.background = `linear-gradient(to right,#e94560 ${pct}%,#e94560 ${pct}%,#1a3a6a ${pct}%,#1a3a6a 100%)`;
-  timeLabel.textContent = fmt(t) + ' / ' + fmt(d);
+  seekBar.style.background = `linear-gradient(to right,#e94560 ${pct}%,#1a3a6a ${pct}%)`;
+  timeLabel.textContent = fmt(t)+' / '+fmt(d);
 }
 
 // ══════════════════════════════════════════
-// MAIN RAF LOOP — drives everything from audio.currentTime
+// AUDIO TIME
 // ══════════════════════════════════════════
-// We track the exact performance.now() when audio started
-// so highlight timing uses wall-clock, not setTimeout drift
-let audioStartedAt = 0;   // performance.now() when audio.play() was called
-let audioStartOffset = 0; // audio.currentTime at that moment
-
 function getAudioTime() {
   if (!audioEl) return 0;
-  // Use performance.now() for sub-millisecond accuracy instead of audioEl.currentTime
-  // which only updates ~4x per second in some browsers
   if (!isPlaying) return audioEl.currentTime;
-  const elapsed = (performance.now() - audioStartedAt) / 1000;
-  return audioStartOffset + elapsed;
+  return audioStartOffset + (performance.now() - audioStartedAt) / 1000;
 }
 
-// Pre-built highlight schedule: unitAbsTimes[i] = audio time in seconds
-// when stageUnits[i] should be highlighted
-let unitAbsTimes = [];
-
-function buildHighlightSchedule() {
-  unitAbsTimes = [];
-  const mode = document.getElementById('r-mode').value;
-  stageUnits.forEach((u, i) => {
-    const cue = cues[u.cueIdx];
-    if (!cue || cue.startTime === null) { unitAbsTimes.push(null); return; }
-    // Find all units in this cue up to this one
-    const cueUnits = stageUnits.filter(x => x.cueIdx === u.cueIdx);
-    const posInCue = cueUnits.indexOf(u);
-    // Calculate time offset from cue start
-    let offsetMs = 0;
-    for (let j = 0; j < posInCue; j++) {
-      const cu = cueUnits[j];
-      const globalSpd = mode === 'char'
-        ? parseInt(document.getElementById('r-csp').value)
-        : parseInt(document.getElementById('r-wsp').value);
-      const lineSpd = (cue.lineSpeeds && cue.lineSpeeds[cu.lineIdx] != null)
-        ? cue.lineSpeeds[cu.lineIdx] : globalSpd;
-      offsetMs += lineSpd;
-    }
-    unitAbsTimes.push(cue.startTime + offsetMs / 1000);
-  });
-}
-
+// ══════════════════════════════════════════
+// RAF LOOP — cue switching driven by audio time
+// ══════════════════════════════════════════
 function rafLoop() {
   if (!isPlaying) return;
   const t = getAudioTime();
   updateSeekBar(t);
-
-  // find which cue should be active based on audio time
   let wantCue = -1;
-  for (let i = 0; i < cues.length; i++) {
+  for (let i=0; i<cues.length; i++) {
     const c = cues[i];
     if (c.startTime === null) continue;
     const end = c.endTime !== null ? c.endTime : c.startTime + 9999;
     if (t >= c.startTime && t < end) { wantCue = i; break; }
   }
-
-  // cue changed — show/hide
   if (wantCue !== activeCueIdx) {
     clearHL();
-    if (wantCue === -1) {
-      hideCue();
-    } else {
-      showCueEl(wantCue);
-    }
-    activeCueIdx = wantCue;
+    clearTimeout(hlTimerId);
+    if (wantCue === -1) { hideCue(); }
+    else { showCueEl(wantCue); unitIdx = stageUnits.findIndex(u => u.cueIdx === wantCue); if (unitIdx<0) unitIdx=0; hlNextAt = performance.now(); scheduleHl(); }
   }
-
-  // AUDIO-DRIVEN highlights: check each unit against current audio time
-  // No setTimeout, no drift — just "is it time for this unit yet?"
-  if (wantCue >= 0 && unitAbsTimes.length > 0) {
-    for (let i = 0; i < stageUnits.length; i++) {
-      const u = stageUnits[i];
-      if (u.cueIdx !== wantCue) continue;
-      const schedTime = unitAbsTimes[i];
-      if (schedTime === null) continue;
-      if (t >= schedTime) {
-        u.el.classList.add('hl');
-      }
-    }
-  }
-
   rafId = requestAnimationFrame(rafLoop);
 }
 
-// Highlights now driven by audio.currentTime in rafLoop — no separate timer needed
+// ══════════════════════════════════════════
+// HIGHLIGHT TICKER — drift-compensating setTimeout
+// ══════════════════════════════════════════
+function scheduleHl() {
+  if (!isPlaying) return;
+  const delay = Math.max(0, hlNextAt - performance.now());
+  hlTimerId = setTimeout(hlTick, delay);
+}
+
+function hlTick() {
+  if (!isPlaying) return;
+  if (unitIdx >= stageUnits.length) return;
+  const u = stageUnits[unitIdx];
+  if (u.cueIdx !== activeCueIdx) return;
+  u.el.classList.add('hl');
+  unitIdx++;
+  const mode = document.getElementById('r-mode').value;
+  const globalSpd = mode==='char' ? parseInt(document.getElementById('r-csp').value) : parseInt(document.getElementById('r-wsp').value);
+  const cue = cues[u.cueIdx];
+  const lineSpd = (cue && cue.lineSpeeds && cue.lineSpeeds[u.lineIdx] != null) ? cue.lineSpeeds[u.lineIdx] : globalSpd;
+  hlNextAt += lineSpd;
+  scheduleHl();
+}
 
 // ══════════════════════════════════════════
-// PLAY / STOP
+// PLAYBACK
 // ══════════════════════════════════════════
 document.getElementById('r-play').addEventListener('click', startPlayback);
 document.getElementById('r-stop').addEventListener('click', stopPlayback);
@@ -915,47 +677,43 @@ document.getElementById('r-stop').addEventListener('click', stopPlayback);
 function startPlayback() {
   if (!audioSrc || !cues.length) { alert('Set up audio and lyrics first!'); return; }
   stopPlayback();
-  if (!isRecording) {
-    buildStage();
-    buildHighlightSchedule();
-  }
-
+  buildStage();
   audioEl = document.getElementById('audio-rec');
   audioEl.src = audioSrc;
-  audioEl.currentTime = seekDragging ? parseFloat(seekBar.value) : audioEl.currentTime || 0;
-  audioEl.play().then(() => {
-    // Record exact moment audio started for drift-free timing
-    audioStartedAt = performance.now();
-    audioStartOffset = audioEl.currentTime;
-  }).catch(() => {
-    audioStartedAt = performance.now();
-    audioStartOffset = 0;
-  });
-  audioEl.onended = () => {
-    isPlaying = false; // stop highlights
-    if (!isRecording) stopPlayback(); // only stop if not recording
-    // if recording: keep recording, user will press Stop & Save manually
-  };
-
-  activeCueIdx = -2; // sentinel: force hideCue on first frame
-  isPlaying = true;
-  hideCue(); clearHL();
-  unitIdx = 0; activeCueIdx = -1;
+  audioEl.currentTime = audioEl.currentTime || 0;
+  audioEl.play().then(() => { audioStartedAt = performance.now(); audioStartOffset = audioEl.currentTime; }).catch(()=>{});
+  audioEl.onended = () => { isPlaying = false; if (!isRecording) stopPlayback(); };
+  activeCueIdx = -2; isPlaying = true;
+  hideCue(); clearHL(); unitIdx = 0; activeCueIdx = -1;
   hlNextAt = performance.now();
-  // small delay so DOM settles before first rAF
   setTimeout(() => { rafId = requestAnimationFrame(rafLoop); }, 30);
 }
 
 function stopPlayback() {
   isPlaying = false;
   cancelAnimationFrame(rafId);
+  clearTimeout(hlTimerId);
   if (audioEl) { audioEl.pause(); }
   hideCue(); clearHL();
   updateSeekBar();
 }
 
 // ══════════════════════════════════════════
-// CANVAS DRAWING — reads directly from DOM highlight state
+// PLAYBACK CONTROLS
+// ══════════════════════════════════════════
+document.getElementById('r-prev') && document.getElementById('r-prev').addEventListener('click', () => jumpToCue(Math.max(0, activeCueIdx-1)));
+document.getElementById('r-next') && document.getElementById('r-next').addEventListener('click', () => jumpToCue(Math.min(cues.length-1, activeCueIdx+1)));
+
+function jumpToCue(idx) {
+  isPlaying = false; cancelAnimationFrame(rafId); clearTimeout(hlTimerId);
+  clearHL();
+  unitIdx = stageUnits.findIndex(u => u.cueIdx === idx);
+  if (unitIdx < 0) unitIdx = 0;
+  showCueEl(idx); updateSeekBar();
+}
+
+// ══════════════════════════════════════════
+// CANVAS DRAWING
 // ══════════════════════════════════════════
 const recCanvas = document.getElementById('rec-canvas');
 
@@ -965,121 +723,85 @@ function drawCanvas() {
   const W = recCanvas.width, H = recCanvas.height;
   ctx.clearRect(0, 0, W, H);
   if (activeCueIdx < 0) return;
-
   const cueDiv = stageInner.querySelector('.cue-div[data-cue="' + activeCueIdx + '"]');
   if (!cueDiv || !cueDiv.classList.contains('on')) return;
-
   const fontPx = Math.round(parseFloat(document.getElementById('r-font').value) / 100 * W);
   ctx.font = '900 ' + fontPx + 'px "Arial Black", Arial, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   const lines = Array.from(cueDiv.querySelectorAll('.sl-line'));
   const lineH = fontPx * 1.28;
   const totalH = lineH * lines.length;
-
   lines.forEach((line, li) => {
     const y = H/2 - totalH/2 + lineH*li + lineH/2;
     const chars = Array.from(line.querySelectorAll('.ch'));
-    const fullText = chars.map(c => c.textContent.toUpperCase()).join('');
+    const fullText = chars.map(c=>c.textContent.toUpperCase()).join('');
     const tw = ctx.measureText(fullText).width;
     const scale = tw > W*0.88 ? (W*0.88)/tw : 1;
     ctx.save();
-    if (scale < 1) { ctx.translate(W/2,y); ctx.scale(scale,scale); ctx.translate(-W/2,-y); }
+    if (scale<1) { ctx.translate(W/2,y); ctx.scale(scale,scale); ctx.translate(-W/2,-y); }
     let x = W/2 - tw/2;
     chars.forEach(ch => {
       const txt = ch.textContent.toUpperCase();
-      const cw = ctx.measureText(txt).width;
-      const cx = x + cw/2;
-      const outl = Math.max(3, Math.round(fontPx * 0.07));
+      const cw = ctx.measureText(txt).width; const cx = x+cw/2;
+      const outl = Math.max(3, Math.round(fontPx*0.07));
       ctx.fillStyle = '#000';
-      [[-outl,-outl],[outl,-outl],[-outl,outl],[outl,outl],[0,outl]].forEach(([ox,oy]) => ctx.fillText(txt, cx+ox, y+oy));
+      [[-outl,-outl],[outl,-outl],[-outl,outl],[outl,outl],[0,outl]].forEach(([ox,oy]) => ctx.fillText(txt,cx+ox,y+oy));
       ctx.fillStyle = ch.classList.contains('hl') ? '#FFE600' : '#FFFFFF';
-      ctx.fillText(txt, cx, y);
-      x += cw;
+      ctx.fillText(txt, cx, y); x += cw;
     });
     ctx.restore();
   });
 }
 
-
+// ══════════════════════════════════════════
+// RECORD
+// ══════════════════════════════════════════
 document.getElementById('r-record').addEventListener('click', () => {
   if (isRecording) { stopRecording(); return; }
   if (!cues.length) { alert('Load lyrics first!'); return; }
-
-  // Setup canvas at 1080p
   const stageEl = document.getElementById('stage');
   const capW = Math.round(1080 * stageEl.offsetWidth / stageEl.offsetHeight);
   const capH = 1080;
-  recCanvas.width  = capW;
-  recCanvas.height = capH;
-
-  // Initial transparent frame
+  recCanvas.width = capW; recCanvas.height = capH;
   const ctx0 = recCanvas.getContext('2d', { alpha: true });
   ctx0.clearRect(0, 0, capW, capH);
-
-  // Capture canvas as video stream
   const stream = recCanvas.captureStream(30);
-
-  // WebM only — most reliable for canvas recording
   const mimeType = 'video/webm;codecs=vp9';
   recordedChunks = [];
   mediaRecorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8000000 });
-
-  mediaRecorder.ondataavailable = e => {
-    if (e.data && e.data.size > 0) recordedChunks.push(e.data);
-  };
-
+  mediaRecorder.ondataavailable = e => { if (e.data && e.data.size > 0) recordedChunks.push(e.data); };
   mediaRecorder.onstop = () => {
-    clearInterval(recTimerInterval);
-    clearInterval(recCanvasInterval);
+    clearInterval(recTimerInterval); clearInterval(recCanvasInterval);
     isRecording = false;
     document.getElementById('r-record').textContent = '⏺ Record';
     document.getElementById('r-record').classList.remove('rec');
     document.getElementById('rec-timer').classList.remove('on');
     if (!recordedChunks.length) { alert('Nothing recorded.'); return; }
     const blob = new Blob(recordedChunks, { type: mimeType });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href = url;
-    a.download = 'green-screen-lyrics.webm';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'lyrics-transparent.webm';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 15000);
   };
-
-  // Start recording BEFORE starting playback
   isRecording = true;
   mediaRecorder.start(100);
-
-  // Canvas redraw loop — setInterval so it runs on system clock, not rAF
-  recCanvasInterval = setInterval(drawCanvas, 1000 / 30);
-
-  // Start playback
+  recCanvasInterval = setInterval(drawCanvas, 1000/30);
   startPlayback();
-
-  // Update UI
   document.getElementById('r-record').textContent = '⏹ Stop & Save';
   document.getElementById('r-record').classList.add('rec');
   const rt = document.getElementById('rec-timer');
-  rt.classList.add('on');
-  rt.textContent = '00:00';
+  rt.classList.add('on'); rt.textContent = '00:00';
   const t0 = Date.now();
   recTimerInterval = setInterval(() => {
-    const s = Math.floor((Date.now() - t0) / 1000);
-    rt.textContent = String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
+    const s = Math.floor((Date.now()-t0)/1000);
+    rt.textContent = String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
   }, 1000);
 });
 
-ange', () => {
-
 function stopRecording() {
-  clearInterval(recCanvasInterval);
-  recCanvasInterval = null;
-  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-    mediaRecorder.stop();
-  }
+  clearInterval(recCanvasInterval); recCanvasInterval = null;
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
   stopPlayback();
 }
 
