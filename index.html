@@ -1084,16 +1084,19 @@ function drawCanvas() {
   const W=recCanvas.width, H=recCanvas.height;
   const bgv=document.getElementById('bg-video');
   ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H);
+  let videoDx=0, videoDy=0, videoDw=W, videoDh=H;
   if(bgv&&bgv.readyState>=2){
     const vw=bgv.videoWidth||W, vh=bgv.videoHeight||H;
     const scale=Math.min(W/vw,H/vh);
-    const dw=vw*scale,dh=vh*scale,dx=(W-dw)/2,dy=(H-dh)/2;
-    ctx.drawImage(bgv,dx,dy,dw,dh);
+    videoDw=vw*scale; videoDh=vh*scale;
+    videoDx=(W-videoDw)/2; videoDy=(H-videoDh)/2;
+    ctx.drawImage(bgv,videoDx,videoDy,videoDw,videoDh);
   }
   if(activeCueIdx<0) return;
   const cueDiv=stageInner.querySelector(`.cue-div[data-cue="${activeCueIdx}"]`);
   if(!cueDiv||!cueDiv.classList.contains('on')) return;
-  const fontPx=Math.round(parseFloat(document.getElementById('r-font').value)/100*W);
+  // Font size relative to VIDEO width (not canvas width) — matches what user sees
+  const fontPx=Math.round(parseFloat(document.getElementById('r-font').value)/100*videoDw);
   const lineSpacingMult = parseFloat(document.getElementById('r-lspacing').value)||1.25;
   const wordSpacingEm  = parseFloat(document.getElementById('r-wspacing').value)||0;
   const wordSpacingPx  = wordSpacingEm * fontPx;
@@ -1102,8 +1105,12 @@ function drawCanvas() {
   const lines=Array.from(cueDiv.querySelectorAll('.sl-line'));
   const lineH=fontPx*lineSpacingMult, totalH=lineH*lines.length;
   // use dragged position (subX/subY as percent)
-  const centerX = (typeof subX!=='undefined' ? subX : 50) / 100 * W;
-  const centerY = (typeof subY!=='undefined' ? subY : 85) / 100 * H;
+  // Position subtitle within the VIDEO area (not the full black canvas)
+  const cuePos = (activeCueIdx>=0 && cues[activeCueIdx]) ? cues[activeCueIdx] : {posX:subX,posY:subY};
+  const posXpct = (cuePos.posX !== undefined ? cuePos.posX : 50) / 100;
+  const posYpct = (cuePos.posY !== undefined ? cuePos.posY : 85) / 100;
+  const centerX = videoDx + posXpct * videoDw;
+  const centerY = videoDy + posYpct * videoDh;
   lines.forEach((ln,li)=>{
     const y=centerY-totalH/2+lineH*li+lineH/2;
     const chars=Array.from(ln.querySelectorAll('.ch'));
@@ -1113,10 +1120,10 @@ function drawCanvas() {
     ctx.save();
     if(scale<1){ctx.translate(W/2,y);ctx.scale(scale,scale);ctx.translate(-W/2,-y);}
     // measure with word spacing applied
-    let totalWAdj=0; chars.forEach(ch=>{ totalWAdj+=ctx.measureText(ch.textContent).width; if(ch.textContent===' ') totalWAdj+=wordSpacingPx; });
+    let totalWAdj=0; chars.forEach(ch=>{ const utxt=ch.textContent.toUpperCase(); totalWAdj+=ctx.measureText(utxt).width; if(utxt===' ') totalWAdj+=wordSpacingPx; });
     let x=centerX-totalWAdj/2;
     chars.forEach(ch=>{
-      const txt=ch.textContent; let cw=ctx.measureText(txt).width; if(txt===' ') cw+=wordSpacingPx; const cx=x+cw/2;
+      const txt=ch.textContent.toUpperCase(); let cw=ctx.measureText(txt).width; if(txt===' ') cw+=wordSpacingPx; const cx=x+cw/2;
       // Clean outline: scale with canvas resolution but keep it thin
       const strokeW = Math.max(1, Math.round(fontPx * 0.04)); // ~4% of font = clean outline
       ctx.lineJoin = 'round';
