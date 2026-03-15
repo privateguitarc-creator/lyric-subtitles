@@ -52,11 +52,15 @@ audio { width:100%; border-radius:5px; }
 #timing-list { margin-top:10px; max-height:260px; overflow-y:auto; }
 #timing-list::-webkit-scrollbar { width:3px; }
 #timing-list::-webkit-scrollbar-thumb { background:#333; border-radius:2px; }
-.tr { display:flex; gap:7px; align-items:center; padding:3px 0; border-bottom:1px solid #1a1a3a; font-size:0.78rem; }
+.tr { display:flex; gap:7px; align-items:center; padding:3px 0; border-bottom:1px solid #1a1a3a; font-size:0.78rem; cursor:grab; transition:background 0.1s; }
+.tr:active { cursor:grabbing; }
+.tr.drag-over { background:#1a3a6a; border-top:2px solid #e94560; }
+.tr.dragging { opacity:0.4; }
 .tr .ti { color:#555; width:24px; flex-shrink:0; }
 .tr .tt input { width:62px; font-size:0.76rem; }
 .tr .tx { color:#aaa; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .tr .td { color:#e94560; cursor:pointer; padding:0 4px; font-size:0.88rem; flex-shrink:0; }
+.drag-handle { color:#444; font-size:0.9rem; cursor:grab; padding:0 4px; flex-shrink:0; }
 
 /* PREVIEW & RECORD */
 #ctrl-bar { background:#16213e; padding:8px 14px; display:flex; flex-direction:column; gap:6px; flex-shrink:0; border-bottom:2px solid #0f3460; z-index:2; }
@@ -227,14 +231,19 @@ function fixStageHeight() {
 window.addEventListener('resize', fixStageHeight);
 document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
   const name = t.dataset.tab;
-  // going to record tab: finalize + sync + rebuild stage (preserves existing data)
+  // going back to setup: restore lyrics text from cues so nothing is lost
+  if (name === 'setup' && cues.length > 0) {
+    const textarea = document.getElementById('lyrics-input');
+    textarea.value = cues.map(c => c.lines.join('\n')).join('\n\n');
+  }
+  // going to record tab
   if (name === 'record' && cues.length > 0) {
     finalizeCues();
     syncControlsToRecord();
     buildStage();
     buildLineSpeeds();
   }
-  // going back to sync tab: re-render timing list with current data intact
+  // going back to sync tab
   if (name === 'sync' && cues.length > 0) {
     renderTimingList();
     updateTapUI();
@@ -398,25 +407,70 @@ function mmssToSecs(str) {
   return isNaN(v) ? null : v;
 }
 
+let dragSrcIdx = null;
+
 function renderTimingList() {
   const list = document.getElementById('timing-list');
   list.innerHTML = '';
   cues.forEach((cue, i) => {
     const row = document.createElement('div');
     row.className = 'tr';
-    row.innerHTML = `<span class="ti">#${i+1}</span>
-      <span class="tt"><input type="text" value="${secsToMmss(cue.startTime)}" placeholder="m:ss" data-i="${i}" style="width:62px;font-size:0.76rem;" title="Enter as m:ss (e.g. 1:23.5) or seconds"></span>
+    row.draggable = true;
+    row.dataset.i = i;
+    row.innerHTML = `
+      <span class="drag-handle" title="Drag to reorder">⠿</span>
+      <span class="ti">#${i+1}</span>
+      <span class="tt"><input type="text" value="${secsToMmss(cue.startTime)}" placeholder="m:ss" data-i="${i}" style="width:62px;font-size:0.76rem;" title="m:ss or seconds"></span>
       <span class="tx">${cue.lines.join(' | ')}</span>
-      <span class="td" data-i="${i}">✕</span>`;
+      <span class="td" data-i="${i}" title="Clear timing">✕</span>`;
+
+    // drag events
+    row.addEventListener('dragstart', e => {
+      dragSrcIdx = i;
+      row.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    row.addEventListener('dragend', () => {
+      row.classList.remove('dragging');
+      list.querySelectorAll('.tr').forEach(r => r.classList.remove('drag-over'));
+    });
+    row.addEventListener('dragover', e => {
+      e.preventDefault();
+      list.querySelectorAll('.tr').forEach(r => r.classList.remove('drag-over'));
+      row.classList.add('drag-over');
+    });
+    row.addEventListener('drop', e => {
+      e.preventDefault();
+      if (dragSrcIdx === null || dragSrcIdx === i) return;
+      // reorder cues array
+      const moved = cues.splice(dragSrcIdx, 1)[0];
+      cues.splice(i, 0, moved);
+      // fix tapIdx
+      tapIdx = cues.filter(c => c.startTime !== null).length;
+      dragSrcIdx = null;
+      renderTimingList();
+      updateTapUI();
+    });
+
     list.appendChild(row);
   });
+
+  // input change
   list.querySelectorAll('input').forEach(inp => inp.addEventListener('change', e => {
     const i = +e.target.dataset.i;
     cues[i].startTime = mmssToSecs(e.target.value);
     e.target.value = secsToMmss(cues[i].startTime);
   }));
+
+  // delete (✕) — clears timing only, does NOT remove the cue
   list.querySelectorAll('.td').forEach(btn => btn.addEventListener('click', e => {
-    cues[+e.target.dataset.i].startTime = null; renderTimingList();
+    e.stopPropagation();
+    const i = +e.target.dataset.i;
+    cues[i].startTime = null;
+    if (tapIdx > i) tapIdx = i;
+    tapIdx = Math.min(tapIdx, cues.length);
+    renderTimingList();
+    updateTapUI();
   }));
 }
 
@@ -545,9 +599,17 @@ function buildLineSpeeds() {
       resetBtn.style.cssText = 'font-size:0.6rem;padding:2px 5px;flex-shrink:0;';
       row.appendChild(resetBtn);
 
+      // edit btn
+      const editBtn = document.createElement('button');
+      editBtn.className = 'sec';
+      editBtn.textContent = '✏';
+      editBtn.title = 'Edit this line';
+      editBtn.style.cssText = 'font-size:0.7rem;padding:2px 5px;flex-shrink:0;background:#1a3a1a;border-color:#2ecc71;';
+      row.appendChild(editBtn);
+
       slider.addEventListener('input', () => {
         const invV = parseInt(slider.value);
-        const actualMs = 1240 - invV; // convert back
+        const actualMs = 1240 - invV;
         cue.lineSpeeds[li] = actualMs;
         msLbl.textContent = actualMs+'ms';
         speedLbl.textContent = getSpeedLabel(actualMs);
@@ -559,6 +621,15 @@ function buildLineSpeeds() {
         slider.value = 1240 - def;
         msLbl.textContent = def+'ms';
         speedLbl.textContent = getSpeedLabel(def);
+      });
+
+      editBtn.addEventListener('click', () => {
+        const newText = prompt('Edit line:', line);
+        if (newText === null) return; // cancelled
+        cue.lines[li] = newText.trim() || line;
+        // rebuild stage and speed panel
+        buildStage();
+        buildLineSpeeds();
       });
 
       list.appendChild(row);
