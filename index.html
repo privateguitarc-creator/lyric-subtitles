@@ -79,9 +79,9 @@ button.grn:hover:not(:disabled) { background:#145e38; }
 #line-speeds-panel .hint { font-size:0.62rem; color:#444; margin-bottom:3px; text-transform:uppercase; letter-spacing:0.3px; }
 
 /* STAGE */
-#stage-wrap { flex:1; overflow:hidden; position:relative; min-height:0; }
-#stage { width:100%; height:100%; position:relative; background:#000; overflow:hidden; }
-#bg-video { position:absolute; top:0; left:0; width:100%; height:100%; object-fit:contain; z-index:0; }
+#stage-wrap { flex:1; overflow-y:auto; overflow-x:hidden; position:relative; min-height:0; }
+#stage { width:100%; position:relative; background:#000; overflow:hidden; }
+#bg-video { width:100%; height:auto; display:block; position:relative; z-index:0; }
 #stage-inner { position:absolute; z-index:2; text-align:center; line-height:1.25; cursor:move; }
 #stage-inner.dragging { user-select:none; }
 /* video size control */
@@ -165,11 +165,6 @@ canvas { display:none; }
       <div class="sl"><label>Char ms</label><input type="range" id="r-csp" min="20" max="800" value="100" step="10" style="width:80px;"><span class="vl" id="r-csp-v">100</span></div>
       <div class="sl"><label>Pause</label><input type="range" id="r-cpause" min="0" max="3000" value="0" step="50" style="width:75px;"><span class="vl" id="r-cpause-v">0ms</span></div>
       <div class="sl"><label>Font Size</label><input type="range" id="r-font" min="0.5" max="12" value="5.5" step="0.25" style="width:75px;"><span class="vl" id="r-font-v">5.5vw</span></div>
-      <div class="sl" style="margin-left:8px;border-left:1px solid #1a3a6a;padding-left:8px;">
-        <label>Video Size</label>
-        <input type="range" id="r-vidsize" min="30" max="100" value="100" step="5" style="width:75px;">
-        <span class="vl" id="r-vidsize-v">100%</span>
-      </div>
       <button id="r-reset-pos" class="sec" style="font-size:0.7rem;padding:4px 8px;" title="Reset subtitle position to center">⊕ Reset Pos</button>
     </div>
     <div id="ctrl-row2" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
@@ -197,8 +192,8 @@ canvas { display:none; }
 <div id="stage-wrap">
   <div id="stage">
     <video id="bg-video" playsinline muted></video>
-    <!-- video-overlay: positioned exactly over video, subtitles live here -->
-    <div id="video-overlay" style="position:absolute;z-index:2;pointer-events:none;">
+    <!-- video-overlay: covers video exactly, subtitles live here -->
+    <div id="video-overlay" style="position:absolute;top:0;left:0;width:100%;z-index:2;pointer-events:none;">
       <!-- alignment guides -->
       <div id="guide-h" style="position:absolute;top:50%;left:0;right:0;height:1px;background:rgba(0,200,255,0.7);display:none;pointer-events:none;z-index:5;box-shadow:0 0 4px rgba(0,200,255,0.8);"></div>
       <div id="guide-v" style="position:absolute;left:50%;top:0;bottom:0;width:1px;background:rgba(0,200,255,0.7);display:none;pointer-events:none;z-index:5;box-shadow:0 0 4px rgba(0,200,255,0.8);"></div>
@@ -256,18 +251,19 @@ function goTab(name) {
 
 function fixStageHeight() {
   const sw = document.getElementById('stage-wrap');
-  if (sw.style.display === 'none') return;
+  if (!sw || sw.style.display === 'none') return;
+  // stage-wrap gets remaining height — video scrolls inside it
   let used = 0;
-  document.querySelectorAll('#tabs').forEach(el => used += el.offsetHeight);
+  const tabs = document.getElementById('tabs');
+  if (tabs) used += tabs.offsetHeight;
   const ctrlBar = document.getElementById('ctrl-bar');
   if (ctrlBar) used += ctrlBar.offsetHeight;
   const lsp = document.getElementById('line-speeds-panel');
   if (lsp && lsp.style.display !== 'none') used += lsp.offsetHeight;
-  const h = Math.max(80, window.innerHeight - used);
-  sw.style.height = h + 'px';
-  document.getElementById('stage').style.height = h + 'px';
-  if (typeof positionSubtitle === 'function') requestAnimationFrame(positionSubtitle);
-  requestAnimationFrame(updateVideoOverlay);
+  sw.style.height = Math.max(80, window.innerHeight - used) + 'px';
+  // stage height is auto (driven by video), not fixed
+  document.getElementById('stage').style.height = 'auto';
+  requestAnimationFrame(() => { updateVideoOverlay(); if(typeof positionSubtitle==='function') positionSubtitle(); });
 }
 window.addEventListener('resize', fixStageHeight);
 
@@ -517,17 +513,7 @@ document.getElementById('r-wspacing').addEventListener('input', e => {
 // ══════════════════════════════════════════
 // VIDEO SIZE CONTROL
 // ══════════════════════════════════════════
-document.getElementById('r-vidsize').addEventListener('input', e => {
-  const pct = e.target.value;
-  document.getElementById('r-vidsize-v').textContent = pct + '%';
-  const bgv = document.getElementById('bg-video');
-  bgv.style.width = pct + '%';
-  bgv.style.height = pct + '%';
-  bgv.style.top = ((100-pct)/2) + '%';
-  bgv.style.left = ((100-pct)/2) + '%';
-  // overlay stays at 100% — subtitle positions don't change with video zoom
-  requestAnimationFrame(() => { updateVideoOverlay(); positionSubtitle(); });
-});
+// video size slider removed — video always 100%
 
 // ══════════════════════════════════════════
 // DRAGGABLE SUBTITLE POSITION
@@ -544,43 +530,25 @@ function getCuePos(cIdx) {
 }
 
 function getVideoScreenRect() {
-  // Always returns rect as if video is 100% (ignores size slider)
   const bgv = document.getElementById('bg-video');
-  const sw  = document.getElementById('stage');
-  if (!bgv || !sw || !bgv.videoWidth) {
-    return { x:0, y:0, w:sw?sw.offsetWidth:0, h:sw?sw.offsetHeight:0 };
-  }
-  const swW=sw.offsetWidth, swH=sw.offsetHeight;
-  const vAsp=bgv.videoWidth/bgv.videoHeight, sAsp=swW/swH;
-  let vW,vH,vX=0,vY=0;
-  if(vAsp>sAsp){vW=swW;vH=swW/vAsp;vY=(swH-vH)/2;}
-  else{vH=swH;vW=swH*vAsp;vX=(swW-vW)/2;}
-  return {x:vX,y:vY,w:vW,h:vH};
+  const stage = document.getElementById('stage');
+  if (!bgv || !stage) return {x:0,y:0,w:0,h:0};
+  const vr = bgv.getBoundingClientRect();
+  const sr = stage.getBoundingClientRect();
+  return { x: vr.left-sr.left, y: vr.top-sr.top, w: vr.width, h: vr.height };
 }
 
 function updateVideoOverlay() {
-  // ALWAYS use 100% video size for overlay regardless of the size slider
-  // This ensures subtitle placement matches export at all times
   const bgv = document.getElementById('bg-video');
-  const sw  = document.getElementById('stage');
   const ov  = document.getElementById('video-overlay');
-  if (!ov || !sw) return;
-
-  const swW = sw.offsetWidth, swH = sw.offsetHeight;
-  let vX=0, vY=0, vW=swW, vH=swH;
-
-  if (bgv && bgv.videoWidth && bgv.videoHeight) {
-    // compute as if video is 100% (object-fit:contain at full stage size)
-    const vAsp = bgv.videoWidth / bgv.videoHeight;
-    const sAsp = swW / swH;
-    if (vAsp > sAsp) { vW=swW; vH=swW/vAsp; vY=(swH-vH)/2; }
-    else              { vH=swH; vW=swH*vAsp; vX=(swW-vW)/2; }
-  }
-
-  ov.style.left   = vX + 'px';
-  ov.style.top    = vY + 'px';
-  ov.style.width  = vW + 'px';
-  ov.style.height = vH + 'px';
+  if (!ov || !bgv) return;
+  // overlay exactly matches the video element's rendered size
+  const rect = bgv.getBoundingClientRect();
+  const stageRect = document.getElementById('stage').getBoundingClientRect();
+  ov.style.left   = (rect.left - stageRect.left) + 'px';
+  ov.style.top    = (rect.top  - stageRect.top)  + 'px';
+  ov.style.width  = rect.width  + 'px';
+  ov.style.height = rect.height + 'px';
 }
 
 function positionSubtitle(cIdx) {
@@ -1138,19 +1106,17 @@ function drawCanvas() {
   const W=recCanvas.width, H=recCanvas.height;
   const bgv=document.getElementById('bg-video');
   ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H);
+  // Canvas = native video resolution, draw video to fill entire canvas
   let videoDx=0, videoDy=0, videoDw=W, videoDh=H;
   if(bgv&&bgv.readyState>=2){
-    const vw=bgv.videoWidth||W, vh=bgv.videoHeight||H;
-    const scale=Math.min(W/vw,H/vh);
-    videoDw=vw*scale; videoDh=vh*scale;
-    videoDx=(W-videoDw)/2; videoDy=(H-videoDh)/2;
-    ctx.drawImage(bgv,videoDx,videoDy,videoDw,videoDh);
+    ctx.drawImage(bgv, 0, 0, W, H);
+    // video fills full canvas — no letterbox needed since canvas = video dimensions
   }
   if(activeCueIdx<0) return;
   const cueDiv=stageInner.querySelector(`.cue-div[data-cue="${activeCueIdx}"]`);
   if(!cueDiv||!cueDiv.classList.contains('on')) return;
-  // Font size relative to VIDEO width (not canvas width) — matches what user sees
-  const fontPx=Math.round(parseFloat(document.getElementById('r-font').value)/100*videoDw);
+  // Font size relative to canvas width (= video native width)
+  const fontPx=Math.round(parseFloat(document.getElementById('r-font').value)/100*W);
   const lineSpacingMult = parseFloat(document.getElementById('r-lspacing').value)||1.25;
   const wordSpacingEm  = parseFloat(document.getElementById('r-wspacing').value)||0;
   const wordSpacingPx  = wordSpacingEm * fontPx;
@@ -1159,12 +1125,10 @@ function drawCanvas() {
   const lines=Array.from(cueDiv.querySelectorAll('.sl-line'));
   const lineH=fontPx*lineSpacingMult, totalH=lineH*lines.length;
   // use dragged position (subX/subY as percent)
-  // posX/posY are % within video area — map to canvas video rect
+  // posX/posY are % of video area — on canvas video fills full W×H
   const cuePos = (activeCueIdx>=0 && cues[activeCueIdx]) ? cues[activeCueIdx] : {posX:50,posY:85};
-  const posXpct = ((cuePos.posX !== undefined ? cuePos.posX : 50)) / 100;
-  const posYpct = ((cuePos.posY !== undefined ? cuePos.posY : 85)) / 100;
-  const centerX = videoDx + posXpct * videoDw;
-  const centerY = videoDy + posYpct * videoDh;
+  const centerX = ((cuePos.posX !== undefined ? cuePos.posX : 50) / 100) * W;
+  const centerY = ((cuePos.posY !== undefined ? cuePos.posY : 85) / 100) * H;
   lines.forEach((ln,li)=>{
     const y=centerY-totalH/2+lineH*li+lineH/2;
     const chars=Array.from(ln.querySelectorAll('.ch'));
