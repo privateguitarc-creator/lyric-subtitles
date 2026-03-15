@@ -164,7 +164,7 @@ canvas { display:none; }
       <div class="sl"><label>Word ms</label><input type="range" id="r-wsp" min="80" max="1500" value="350" step="20" style="width:80px;"><span class="vl" id="r-wsp-v">350</span></div>
       <div class="sl"><label>Char ms</label><input type="range" id="r-csp" min="20" max="800" value="100" step="10" style="width:80px;"><span class="vl" id="r-csp-v">100</span></div>
       <div class="sl"><label>Pause</label><input type="range" id="r-cpause" min="0" max="3000" value="0" step="50" style="width:75px;"><span class="vl" id="r-cpause-v">0ms</span></div>
-      <div class="sl"><label>Font</label><input type="range" id="r-font" min="0.5" max="12" value="5.5" step="0.25" style="width:75px;"><span class="vl" id="r-font-v">5.5vw</span></div>
+      <div class="sl"><label>Font Size</label><input type="range" id="r-font" min="0.5" max="12" value="5.5" step="0.25" style="width:75px;"><span class="vl" id="r-font-v">5.5vw</span></div>
       <div class="sl" style="margin-left:8px;border-left:1px solid #1a3a6a;padding-left:8px;">
         <label>Video Size</label>
         <input type="range" id="r-vidsize" min="30" max="100" value="100" step="5" style="width:75px;">
@@ -525,7 +525,7 @@ document.getElementById('r-vidsize').addEventListener('input', e => {
   bgv.style.height = pct + '%';
   bgv.style.top = ((100-pct)/2) + '%';
   bgv.style.left = ((100-pct)/2) + '%';
-  // update overlay to follow video
+  // overlay stays at 100% — subtitle positions don't change with video zoom
   requestAnimationFrame(() => { updateVideoOverlay(); positionSubtitle(); });
 });
 
@@ -544,6 +544,7 @@ function getCuePos(cIdx) {
 }
 
 function getVideoScreenRect() {
+  // Always returns rect as if video is 100% (ignores size slider)
   const bgv = document.getElementById('bg-video');
   const sw  = document.getElementById('stage');
   if (!bgv || !sw || !bgv.videoWidth) {
@@ -558,14 +559,28 @@ function getVideoScreenRect() {
 }
 
 function updateVideoOverlay() {
-  // Position the video-overlay div to exactly cover the video display area
-  const vr = getVideoScreenRect();
-  const ov = document.getElementById('video-overlay');
-  if (!ov) return;
-  ov.style.left   = vr.x + 'px';
-  ov.style.top    = vr.y + 'px';
-  ov.style.width  = vr.w + 'px';
-  ov.style.height = vr.h + 'px';
+  // ALWAYS use 100% video size for overlay regardless of the size slider
+  // This ensures subtitle placement matches export at all times
+  const bgv = document.getElementById('bg-video');
+  const sw  = document.getElementById('stage');
+  const ov  = document.getElementById('video-overlay');
+  if (!ov || !sw) return;
+
+  const swW = sw.offsetWidth, swH = sw.offsetHeight;
+  let vX=0, vY=0, vW=swW, vH=swH;
+
+  if (bgv && bgv.videoWidth && bgv.videoHeight) {
+    // compute as if video is 100% (object-fit:contain at full stage size)
+    const vAsp = bgv.videoWidth / bgv.videoHeight;
+    const sAsp = swW / swH;
+    if (vAsp > sAsp) { vW=swW; vH=swW/vAsp; vY=(swH-vH)/2; }
+    else              { vH=swH; vW=swH*vAsp; vX=(swW-vW)/2; }
+  }
+
+  ov.style.left   = vX + 'px';
+  ov.style.top    = vY + 'px';
+  ov.style.width  = vW + 'px';
+  ov.style.height = vH + 'px';
 }
 
 function positionSubtitle(cIdx) {
@@ -1163,20 +1178,15 @@ function drawCanvas() {
     let x=centerX-totalWAdj/2;
     chars.forEach(ch=>{
       const txt=ch.textContent.toUpperCase(); let cw=ctx.measureText(txt).width; if(txt===' ') cw+=wordSpacingPx; const cx=x+cw/2;
-      // Clean outline: scale with canvas resolution but keep it thin
-      const strokeW = Math.max(1, Math.round(fontPx * 0.04)); // ~4% of font = clean outline
+      // Crisp outline — thin clean stroke
       ctx.lineJoin = 'round';
-      ctx.lineWidth = strokeW * 2; // strokeText draws outward + inward, so double
+      ctx.lineCap  = 'round';
+      ctx.lineWidth = Math.max(2, fontPx * 0.05);
       ctx.strokeStyle = '#000000';
       ctx.strokeText(txt, cx, y);
-      // subtle drop shadow for readability on any background
-      ctx.shadowColor = 'rgba(0,0,0,0.6)';
-      ctx.shadowBlur = fontPx * 0.06;
-      ctx.shadowOffsetX = strokeW;
-      ctx.shadowOffsetY = strokeW;
+      // fill
       ctx.fillStyle = ch.classList.contains('hl') ? '#FFE600' : '#FFFFFF';
       ctx.fillText(txt, cx, y);
-      ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
       x+=cw;
     });
     ctx.restore();
