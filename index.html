@@ -5,8 +5,6 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Lyric Sync Tool</title>
-<script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js"></script>
-<script src="https://unpkg.com/@ffmpeg/util@0.12.1/dist/umd/index.js"></script>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
 body { font-family:'Segoe UI',sans-serif; background:#0d0d1a; color:#eee; overflow:hidden; user-select:none; height:100vh; display:flex; flex-direction:column; }
@@ -1102,7 +1100,7 @@ document.getElementById('r-record').addEventListener('click', async () => {
   try { stream = recCanvas.captureStream(30); }
   catch(e) { alert('Use Chrome browser for recording.'); return; }
 
-  const bgMode = document.getElementById('bg-mode').value;
+  // bgMode already declared above
   // Transparent mode MUST use webm+vp9 (only format supporting alpha channel)
   // Green screen mode can use mp4 for wider compatibility
   const mimeType = bgMode === 'transparent'
@@ -1138,7 +1136,7 @@ document.getElementById('r-record').addEventListener('click', async () => {
   };
 
   // Update stage visual to match recording mode
-  document.getElementById('stage').style.background = bgMode === 'transparent' ? 'transparent' : '#00FF00';
+  document.getElementById('stage').style.background = bgMode === 'transparent' ? 'rgba(0,0,0,0)' : '#00FF00';
   isRecording = true;
   cueCache = {}; lastHlState = ''; // clear render cache
   mediaRecorder.start(100);
