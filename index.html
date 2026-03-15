@@ -929,7 +929,7 @@ function startPlayback() {
     setTimeout(() => {
       if (isRecording) stopRecording();
       else stopPlayback();
-    }, 800); // small buffer to catch last frame
+    }, 500);
   };
 
   activeCueIdx = -2; // sentinel: force hideCue on first frame
@@ -956,7 +956,6 @@ function stopPlayback() {
 const recCanvas = document.getElementById('rec-canvas');
 
 function drawCanvas() {
-  if (!isRecording) return;
   const ctx = recCanvas.getContext('2d');
   ctx.imageSmoothingEnabled = false;
   const W = recCanvas.width, H = recCanvas.height;
@@ -1038,8 +1037,6 @@ document.getElementById('r-record').addEventListener('click', async () => {
   if (isRecording) { stopRecording(); return; }
   if (!cues.length) { alert('Load lyrics first!'); return; }
 
-  // Record directly from canvas — no screen capture, no popups, no glitches
-  // Canvas draws the green screen + highlighted text at 1080p
   const stageEl = document.getElementById('stage');
   const aspect  = stageEl.offsetWidth / stageEl.offsetHeight;
   const capH    = 1080;
@@ -1047,57 +1044,63 @@ document.getElementById('r-record').addEventListener('click', async () => {
   recCanvas.width  = capW;
   recCanvas.height = capH;
 
-  // draw first frame immediately
-  drawCanvas();
+  // draw a clean green frame first
+  const ctx0 = recCanvas.getContext('2d');
+  ctx0.fillStyle = '#00FF00';
+  ctx0.fillRect(0, 0, capW, capH);
 
-  let canvasStream;
-  try { canvasStream = recCanvas.captureStream(30); }
-  catch(e) { alert('Canvas recording not supported. Please use Chrome.'); return; }
+  let stream;
+  try { stream = recCanvas.captureStream(30); }
+  catch(e) { alert('Not supported. Use Chrome.'); return; }
 
-  const mimeType = ['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm']
-    .find(t => MediaRecorder.isTypeSupported(t)) || 'video/webm';
+  // Try MP4 first (supported on Chrome Mac/iOS), fallback to WebM
+  const mimeType = [
+    'video/mp4;codecs=avc1',
+    'video/mp4',
+    'video/webm;codecs=vp9',
+    'video/webm;codecs=vp8',
+    'video/webm'
+  ].find(t => MediaRecorder.isTypeSupported(t)) || 'video/webm';
+  const fileExt = mimeType.includes('mp4') ? 'mp4' : 'webm';
 
   recordedChunks = [];
   try {
-    mediaRecorder = new MediaRecorder(canvasStream, { mimeType, videoBitsPerSecond: 8000000 });
+    mediaRecorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8000000 });
   } catch(e) {
-    mediaRecorder = new MediaRecorder(canvasStream);
+    mediaRecorder = new MediaRecorder(stream);
   }
 
   mediaRecorder.ondataavailable = e => { if (e.data?.size > 0) recordedChunks.push(e.data); };
 
-  mediaRecorder.onstop = async () => {
+  mediaRecorder.onstop = () => {
     clearInterval(recTimerInterval);
-    clearTimeout(canvasLoopTimer);
     isRecording = false;
+    cancelAnimationFrame(recRafId);
     const btn = document.getElementById('r-record');
     btn.textContent = '⏺ Record'; btn.classList.remove('rec');
     document.getElementById('rec-timer').classList.remove('on');
-    if (!recordedChunks.length) { alert('Nothing was recorded.'); return; }
-    const statusEl = document.getElementById('rec-status-msg');
-    try {
-      await convertToMp4(recordedChunks, mimeType);
-    } catch(err) {
-      console.warn('MP4 failed, saving WebM:', err);
-      if (statusEl) statusEl.textContent = '⚠ Saving as WebM…';
-      downloadBlob(new Blob(recordedChunks, {type: mimeType}), 'green-screen-lyrics.webm');
-      setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 4000);
-    }
+    if (!recordedChunks.length) { alert('Nothing recorded.'); return; }
+    // direct download — no conversion, fast
+    const blob = new Blob(recordedChunks, { type: mimeType });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = 'green-screen-lyrics.' + fileExt;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
   };
 
   isRecording = true;
-  mediaRecorder.start(100);
+  mediaRecorder.start(200);
 
-  // Canvas draw loop — completely separate from playback timer so no speed impact
-  let canvasLoopTimer;
-  function canvasLoop() {
+  // Single rAF loop draws canvas — runs independently, never blocks hlTick
+  function recLoop() {
     if (!isRecording) return;
     drawCanvas();
-    canvasLoopTimer = setTimeout(canvasLoop, 1000 / 30); // 30fps
+    recRafId = requestAnimationFrame(recLoop);
   }
-  canvasLoop();
+  recRafId = requestAnimationFrame(recLoop);
 
-  // Start playback
+  // Start playback AFTER recording is set up
   startPlayback();
 
   const btn = document.getElementById('r-record');
@@ -1113,11 +1116,10 @@ document.getElementById('r-record').addEventListener('click', async () => {
 
 
 function stopRecording() {
+  cancelAnimationFrame(recRafId);
   if (mediaRecorder && mediaRecorder.state !== 'inactive') {
     try { mediaRecorder.requestData(); } catch(e) {}
-    setTimeout(() => {
-      if (mediaRecorder.state !== 'inactive') mediaRecorder.stop();
-    }, 200);
+    mediaRecorder.stop();
   }
   stopPlayback();
 }
