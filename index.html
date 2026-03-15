@@ -887,6 +887,7 @@ function rafLoop() {
       showCueEl(wantCue);
     }
     activeCueIdx = wantCue;
+    lastHlState = ''; // force cache rebuild on cue change
   }
 
   // AUDIO-DRIVEN highlights: check each unit against current audio time
@@ -961,17 +962,25 @@ function stopPlayback() {
 // ══════════════════════════════════════════
 const recCanvas = document.getElementById('rec-canvas');
 
-function drawCanvas() {
-  const ctx = recCanvas.getContext('2d');
-  ctx.imageSmoothingEnabled = false;
+// ── PRE-RENDERED CACHE ──
+// We render each cue to an offscreen canvas ONCE when highlight changes
+// Then drawCanvas just does a single drawImage — near-zero CPU
+let cueCache = {};       // cueIdx+hlState -> ImageBitmap
+let lastHlState = '';    // string representation of current highlights
+
+function getCueRender(cueIdx, hlState) {
+  const key = cueIdx + '|' + hlState;
+  if (cueCache[key]) return cueCache[key];
+
   const W = recCanvas.width, H = recCanvas.height;
+  const off = new OffscreenCanvas(W, H);
+  const ctx = off.getContext('2d');
+
   ctx.fillStyle = '#00FF00';
-  ctx.fillRect(0,0,W,H);
+  ctx.fillRect(0, 0, W, H);
 
-  if (activeCueIdx < 0) return; // pure green screen
-
-  const cueDiv = stageInner.querySelector(`.cue-div[data-cue="${activeCueIdx}"]`);
-  if (!cueDiv || !cueDiv.classList.contains('on')) return;
+  const cueDiv = stageInner.querySelector(`.cue-div[data-cue="${cueIdx}"]`);
+  if (!cueDiv) return null;
 
   const fontPx = Math.round(parseFloat(document.getElementById('r-font').value) / 100 * W);
   ctx.font = `900 ${fontPx}px "Arial Black", Arial, sans-serif`;
@@ -983,133 +992,77 @@ function drawCanvas() {
   const totalH = lineH * lines.length;
 
   lines.forEach((line, li) => {
-    const y = H/2 - totalH/2 + lineH*li + lineH/2;
+    const y = H/2 - totalH/2 + lineH * li + lineH/2;
     const chars = Array.from(line.querySelectorAll('.ch'));
-    const fullText = chars.map(c=>c.textContent.toUpperCase()).join('');
+    const fullText = chars.map(c => c.textContent.toUpperCase()).join('');
     const tw = ctx.measureText(fullText).width;
-    const scale = tw > W*0.88 ? (W*0.88)/tw : 1;
+    const scale = tw > W * 0.88 ? (W * 0.88) / tw : 1;
 
     ctx.save();
-    if (scale < 1) {
-      // scale uniformly from center so text doesn't get clipped
-      ctx.translate(W/2, y);
-      ctx.scale(scale, scale);
-      ctx.translate(-W/2, -y);
-    }
+    if (scale < 1) { ctx.translate(W/2, y); ctx.scale(scale, scale); ctx.translate(-W/2, -y); }
 
     let x = W/2 - tw/2;
     chars.forEach(ch => {
       const txt = ch.textContent.toUpperCase();
-      const cw = ctx.measureText(txt).width;
-      const cx = x + cw/2;
+      const cw  = ctx.measureText(txt).width;
+      const cx  = x + cw/2;
       const isHL = ch.classList.contains('hl');
-
-      // thick black outline for chroma key clarity
       const outl = Math.max(3, Math.round(fontPx * 0.08));
-      ctx.fillStyle = '#000000';
-      // 8-directional outline for solid edge
+
+      // outline
+      ctx.fillStyle = '#000';
       for (let ox = -outl; ox <= outl; ox += Math.ceil(outl/2)) {
         for (let oy = -outl; oy <= outl; oy += Math.ceil(outl/2)) {
           if (ox === 0 && oy === 0) continue;
-          ctx.fillText(txt, cx + ox, y + oy);
+          ctx.fillText(txt, cx+ox, y+oy);
         }
       }
-
-      // main fill — bright white or yellow
       ctx.fillStyle = isHL ? '#FFE600' : '#FFFFFF';
       ctx.fillText(txt, cx, y);
-
       x += cw;
     });
     ctx.restore();
   });
+
+  // store as ImageBitmap for fastest possible drawImage
+  const bmp = off.transferToImageBitmap();
+  cueCache[key] = bmp;
+  // limit cache size
+  const keys = Object.keys(cueCache);
+  if (keys.length > 20) delete cueCache[keys[0]];
+  return bmp;
 }
 
-// continuous canvas loop while recording (25fps)
-function startCanvasLoop() {
-  clearTimeout(recCanvasTimer);
-  function loop() {
-    if (!isRecording) return;
-    drawCanvas();
-    recCanvasTimer = setTimeout(loop, 1000/25);
+// Invalidate cache when highlights change (called from rafLoop)
+function invalidateCache() { cueCache = {}; }
+
+function drawCanvas() {
+  if (!isRecording) return;
+  const ctx = recCanvas.getContext('2d');
+  const W = recCanvas.width, H = recCanvas.height;
+
+  if (activeCueIdx < 0) {
+    ctx.fillStyle = '#00FF00';
+    ctx.fillRect(0, 0, W, H);
+    return;
   }
-  loop();
+
+  // Build a hash of current highlight state for this cue
+  const units = stageUnits.filter(u => u.cueIdx === activeCueIdx);
+  const hlState = units.map(u => u.el.classList.contains('hl') ? '1' : '0').join('');
+
+  if (hlState !== lastHlState) {
+    lastHlState = hlState;
+    invalidateCache();
+  }
+
+  const bmp = getCueRender(activeCueIdx, hlState);
+  if (bmp) ctx.drawImage(bmp, 0, 0);
+  else {
+    ctx.fillStyle = '#00FF00';
+    ctx.fillRect(0, 0, W, H);
+  }
 }
-
-// ══════════════════════════════════════════
-// RECORD BUTTON
-// ══════════════════════════════════════════
-document.getElementById('r-record').addEventListener('click', async () => {
-  if (isRecording) { stopRecording(); return; }
-  if (!cues.length) { alert('Load lyrics first!'); return; }
-
-  const stageEl = document.getElementById('stage');
-  const capH = 1080;
-  const capW = Math.round(capH * stageEl.offsetWidth / stageEl.offsetHeight);
-  recCanvas.width  = capW;
-  recCanvas.height = capH;
-
-  // Green first frame
-  const ctx0 = recCanvas.getContext('2d');
-  ctx0.fillStyle = '#00FF00';
-  ctx0.fillRect(0, 0, capW, capH);
-
-  let stream;
-  try { stream = recCanvas.captureStream(30); }
-  catch(e) { alert('Use Chrome browser for recording.'); return; }
-
-  const mimeType = [
-    'video/mp4;codecs=avc1', 'video/mp4',
-    'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'
-  ].find(t => MediaRecorder.isTypeSupported(t)) || 'video/webm';
-  const fileExt = mimeType.includes('mp4') ? 'mp4' : 'webm';
-
-  recordedChunks = [];
-  try {
-    mediaRecorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8000000 });
-  } catch(e) {
-    mediaRecorder = new MediaRecorder(stream);
-  }
-
-  mediaRecorder.ondataavailable = e => {
-    if (e.data && e.data.size > 0) recordedChunks.push(e.data);
-  };
-
-  mediaRecorder.onstop = () => {
-    clearInterval(recTimerInterval);
-    clearInterval(recCanvasInterval);
-    isRecording = false;
-    document.getElementById('r-record').textContent = '⏺ Record';
-    document.getElementById('r-record').classList.remove('rec');
-    document.getElementById('rec-timer').classList.remove('on');
-    if (!recordedChunks.length) { alert('Nothing recorded.'); return; }
-    const blob = new Blob(recordedChunks, { type: mimeType });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href = url; a.download = 'green-screen-lyrics.' + fileExt;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 15000);
-  };
-
-  isRecording = true;
-  mediaRecorder.start(100);
-
-  // Canvas loop via setInterval - system clock, never throttled
-  recCanvasInterval = setInterval(drawCanvas, 1000 / 30);
-
-  // Start playback
-  startPlayback();
-
-  document.getElementById('r-record').textContent = '⏹ Stop & Save';
-  document.getElementById('r-record').classList.add('rec');
-  const rt = document.getElementById('rec-timer');
-  rt.classList.add('on'); rt.textContent = '00:00';
-  const t0 = Date.now();
-  recTimerInterval = setInterval(() => {
-    const s = Math.floor((Date.now() - t0) / 1000);
-    rt.textContent = String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
-  }, 1000);
-});
 
 
 function stopRecording() {
