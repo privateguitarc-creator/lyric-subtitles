@@ -776,112 +776,59 @@ function drawCanvas() {
 // ══════════════════════════════════════════
 // RECORD
 // ══════════════════════════════════════════
-document.getElementById('r-record').addEventListener('click', () => {
+document.getElementById('r-record').addEventListener('click', async () => {
   if (isRecording) { stopRecording(); return; }
   if (!cues.length) { alert('Load lyrics first!'); return; }
 
-  // 4K canvas
-  const stageEl = document.getElementById('stage');
-  const capW = Math.round(2160 * stageEl.offsetWidth / stageEl.offsetHeight);
-  const capH = 2160;
-  recCanvas.width  = capW;
-  recCanvas.height = capH;
-
-  // Draw green first frame immediately
-  const ctx0 = recCanvas.getContext('2d');
-  ctx0.fillStyle = '#00FF00';
-  ctx0.fillRect(0, 0, capW, capH);
-
-  // Get stream
+  // Use tab screen capture — records exactly what you see, no canvas lag
   let stream;
   try {
-    stream = recCanvas.captureStream(30);
+    stream = await navigator.mediaDevices.getDisplayMedia({
+      video: { frameRate: 30, displaySurface: 'browser' },
+      audio: false,
+      preferCurrentTab: true
+    });
   } catch(e) {
-    alert('captureStream failed: ' + e.message + '
-Please use Chrome browser.');
+    alert('Please allow screen sharing when prompted.\nTip: Select THIS TAB in the Chrome dialog.');
     return;
   }
 
-  if (!stream || stream.getVideoTracks().length === 0) {
-    alert('No video stream. Please use Chrome browser.');
-    return;
-  }
-
-  // Find supported mime type - try each one
-  let mimeType = '';
-  const candidates = [
-    'video/mp4;codecs=avc1',
-    'video/mp4',
-    'video/webm;codecs=vp9',
-    'video/webm;codecs=vp8',
-    'video/webm'
-  ];
-  for (const t of candidates) {
-    if (MediaRecorder.isTypeSupported(t)) { mimeType = t; break; }
-  }
-
+  const mimeType = [
+    'video/mp4;codecs=avc1', 'video/mp4',
+    'video/webm;codecs=vp9', 'video/webm'
+  ].find(t => MediaRecorder.isTypeSupported(t)) || 'video/webm';
   const fileExt = mimeType.includes('mp4') ? 'mp4' : 'webm';
 
   recordedChunks = [];
-
   try {
-    if (mimeType) {
-      mediaRecorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 20000000 });
-    } else {
-      mediaRecorder = new MediaRecorder(stream); // browser default
-    }
+    mediaRecorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 20000000 });
   } catch(e) {
-    try {
-      mediaRecorder = new MediaRecorder(stream);
-      mimeType = '';
-    } catch(e2) {
-      alert('MediaRecorder not supported: ' + e2.message);
-      return;
-    }
+    mediaRecorder = new MediaRecorder(stream);
   }
 
-  console.log('Recording with mimeType:', mediaRecorder.mimeType);
-
-  mediaRecorder.onerror = e => {
-    console.error('MediaRecorder error:', e);
-    alert('Recording error: ' + e.error);
-  };
-
   mediaRecorder.ondataavailable = e => {
-    console.log('Data chunk:', e.data ? e.data.size : 'null');
     if (e.data && e.data.size > 0) recordedChunks.push(e.data);
   };
 
   mediaRecorder.onstop = () => {
     clearInterval(recTimerInterval);
-    clearInterval(recCanvasInterval);
     isRecording = false;
+    stream.getTracks().forEach(t => t.stop());
     document.getElementById('r-record').textContent = '⏺ Record';
     document.getElementById('r-record').classList.remove('rec');
     document.getElementById('rec-timer').classList.remove('on');
-    console.log('Total chunks:', recordedChunks.length);
-    if (!recordedChunks.length) { alert('Nothing recorded. Check console for errors.'); return; }
-    const finalMime = mimeType || 'video/webm';
-    const blob = new Blob(recordedChunks, { type: finalMime });
-    console.log('Blob size:', blob.size);
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href = url;
-    a.download = 'green-screen-4k.' + fileExt;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 15000);
+    if (!recordedChunks.length) { alert('Nothing recorded.'); return; }
+    const blob = new Blob(recordedChunks, { type: mimeType });
+    showPreviewModal(blob, fileExt);
   };
 
-  try {
-    mediaRecorder.start(100);
-    console.log('MediaRecorder started, state:', mediaRecorder.state);
-  } catch(e) {
-    alert('Failed to start recording: ' + e.message);
-    return;
-  }
+  // If user stops sharing via Chrome's "Stop sharing" button
+  stream.getVideoTracks()[0].addEventListener('ended', () => {
+    if (isRecording) stopRecording();
+  });
 
   isRecording = true;
-  recCanvasInterval = setInterval(drawCanvas, 1000 / 30);
+  mediaRecorder.start(100);
   startPlayback();
 
   document.getElementById('r-record').textContent = '⏹ Stop & Save';
@@ -894,6 +841,58 @@ Please use Chrome browser.');
     rt.textContent = String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
   }, 1000);
 });
+
+// ── PREVIEW MODAL before saving ──
+function showPreviewModal(blob, fileExt) {
+  const url = URL.createObjectURL(blob);
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;';
+
+  const title = document.createElement('div');
+  title.style.cssText = 'color:#fff;font-size:1rem;font-weight:700;letter-spacing:1px;';
+  title.textContent = '🎬 Preview Recording — looks good? Save it!';
+  overlay.appendChild(title);
+
+  const video = document.createElement('video');
+  video.src = url;
+  video.controls = true;
+  video.autoplay = true;
+  video.style.cssText = 'max-width:90vw;max-height:60vh;border-radius:8px;border:2px solid #e94560;background:#000;';
+  overlay.appendChild(video);
+
+  const info = document.createElement('div');
+  info.style.cssText = 'color:#888;font-size:0.8rem;';
+  info.textContent = 'Size: ' + (blob.size / 1024 / 1024).toFixed(1) + ' MB  •  Format: ' + fileExt.toUpperCase();
+  overlay.appendChild(info);
+
+  const btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex;gap:12px;';
+
+  const saveBtn = document.createElement('button');
+  saveBtn.textContent = '💾 Save File';
+  saveBtn.style.cssText = 'background:#2ecc71;color:#fff;border:none;border-radius:6px;padding:10px 28px;font-size:0.95rem;font-weight:700;cursor:pointer;';
+  saveBtn.addEventListener('click', () => {
+    const a = document.createElement('a');
+    a.href = url; a.download = 'green-screen-lyrics.' + fileExt;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    document.body.removeChild(overlay);
+  });
+
+  const discardBtn = document.createElement('button');
+  discardBtn.textContent = '🗑 Discard';
+  discardBtn.style.cssText = 'background:#c0392b;color:#fff;border:none;border-radius:6px;padding:10px 22px;font-size:0.95rem;font-weight:700;cursor:pointer;';
+  discardBtn.addEventListener('click', () => {
+    video.pause(); URL.revokeObjectURL(url);
+    document.body.removeChild(overlay);
+  });
+
+  btnRow.appendChild(saveBtn);
+  btnRow.appendChild(discardBtn);
+  overlay.appendChild(btnRow);
+  document.body.appendChild(overlay);
+}
 
 
 function stopRecording() {
