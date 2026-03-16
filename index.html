@@ -1494,27 +1494,22 @@ function showExportPreview(blob, mimeType) {
   modal.style.display = 'flex';
 }
 
-// Save button — trigger download
-document.getElementById('modal-save-btn').addEventListener('click', () => {
+// Global modal functions called via inline onclick
+function modalSave() {
   if (!exportBlobUrl) return;
   const ext = exportMime && exportMime.startsWith('video/mp4') ? 'mp4' : 'webm';
-  const a   = document.createElement('a');
-  a.href     = exportBlobUrl;
+  const a = document.createElement('a');
+  a.href = exportBlobUrl;
   a.download = 'subtitled-video.' + ext;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  // Close modal after download
   closeExportModal();
-});
+}
 
-// Discard button
-document.getElementById('modal-discard-btn').addEventListener('click', () => {
+function modalDiscard() {
   closeExportModal();
-});
-
-// Close button
-document.getElementById('modal-close-btn').addEventListener('click', closeExportModal);
+}
 
 // Click outside modal to close
 document.getElementById('export-modal').addEventListener('click', e => {
@@ -1534,7 +1529,7 @@ function closeExportModal() {
 goTab('setup');
 </script>
 <!-- Export Preview Modal -->
-<div id="export-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:9999;align-items:center;justify-content:center;flex-direction:column;pointer-events:all;user-select:text;">
+<div id="export-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;width:100vw;height:100vh;background:rgba(0,0,0,0.92);z-index:99999;align-items:center;justify-content:center;flex-direction:column;pointer-events:all;user-select:auto;isolation:isolate;">
   <div style="background:#16213e;border:2px solid #e94560;border-radius:12px;max-width:90vw;width:900px;max-height:95vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 0 40px rgba(233,69,96,0.3);pointer-events:all;user-select:text;">
 
     <!-- Header -->
@@ -1543,7 +1538,7 @@ goTab('setup');
         <div style="font-size:1.1rem;font-weight:700;color:#fff;">🎬 Export Preview</div>
         <div style="font-size:0.75rem;color:#888;margin-top:2px;">Review your exported video before saving</div>
       </div>
-      <button id="modal-close-btn" style="background:#0f3460;border:1px solid #444;color:#888;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:0.8rem;pointer-events:all;position:relative;z-index:10000;">✕ Close</button>
+      <button onclick="modalDiscard()" style="background:#0f3460;border:1px solid #444;color:#888;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:0.8rem;pointer-events:all;position:relative;z-index:10001;">✕ Close</button>
     </div>
 
     <!-- Video Preview -->
@@ -1553,8 +1548,8 @@ goTab('setup');
 
     <!-- Action Buttons -->
     <div style="padding:16px 20px;border-top:1px solid #0f3460;display:flex;gap:10px;align-items:center;justify-content:center;flex-shrink:0;flex-wrap:wrap;">
-      <button id="modal-save-btn" style="background:linear-gradient(135deg,#1a7a4a,#27ae60);border:1px solid #2ecc71;color:#fff;border-radius:7px;padding:10px 28px;font-size:0.95rem;font-weight:700;cursor:pointer;pointer-events:all;position:relative;z-index:10000;">⬇ Save / Download</button>
-      <button id="modal-discard-btn" style="background:#3a0f0f;border:1px solid #e94560;color:#e94560;border-radius:7px;padding:10px 28px;font-size:0.95rem;font-weight:700;cursor:pointer;pointer-events:all;position:relative;z-index:10000;">✕ Discard &amp; Edit Again</button>
+      <button onclick="modalSave()" style="background:linear-gradient(135deg,#1a7a4a,#27ae60);border:1px solid #2ecc71;color:#fff;border-radius:7px;padding:10px 28px;font-size:0.95rem;font-weight:700;cursor:pointer;pointer-events:all;position:relative;z-index:10001;">⬇ Save / Download</button>
+      <button onclick="modalDiscard()" style="background:#3a0f0f;border:1px solid #e94560;color:#e94560;border-radius:7px;padding:10px 28px;font-size:0.95rem;font-weight:700;cursor:pointer;pointer-events:all;position:relative;z-index:10001;">✕ Discard &amp; Edit Again</button>
     </div>
 
   </div>
