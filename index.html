@@ -79,9 +79,11 @@ button.grn:hover:not(:disabled) { background:#145e38; }
 #line-speeds-panel .hint { font-size:0.62rem; color:#444; margin-bottom:3px; text-transform:uppercase; letter-spacing:0.3px; }
 
 /* STAGE */
-#stage-wrap { flex:1; overflow:hidden; position:relative; min-height:0; display:flex; align-items:stretch; }
-#stage { width:100%; height:100%; position:relative; background:#000; overflow:hidden; display:flex; align-items:center; justify-content:center; }
-#bg-video { max-width:100%; max-height:100%; width:auto; height:auto; display:block; position:relative; z-index:0; object-fit:contain; }
+#stage-wrap { flex:1; overflow-y:auto; overflow-x:hidden; position:relative; min-height:0; }
+#stage-wrap::-webkit-scrollbar { width:4px; }
+#stage-wrap::-webkit-scrollbar-thumb { background:#333; border-radius:2px; }
+#stage { width:100%; position:relative; background:#000; }
+#bg-video { width:100%; height:auto; display:block; position:relative; z-index:0; }
 #stage-inner { position:absolute; z-index:2; text-align:center; line-height:1.25; cursor:move; }
 #stage-inner.dragging { user-select:none; }
 /* video size control */
@@ -299,9 +301,11 @@ function fixStageHeight() {
   if (ctrlBar) used += ctrlBar.offsetHeight;
   const lsp = document.getElementById('line-speeds-panel');
   if (lsp && lsp.style.display !== 'none') used += lsp.offsetHeight;
+  // stage-wrap gets remaining viewport height — video fills full width inside and scrolls
   const h = Math.max(120, window.innerHeight - used);
   sw.style.height = h + 'px';
-  document.getElementById('stage').style.height = h + 'px';
+  // stage height is auto (driven by video natural height)
+  document.getElementById('stage').style.height = 'auto';
   requestAnimationFrame(() => { updateVideoOverlay(); if(typeof positionSubtitle==='function') positionSubtitle(); });
 }
 window.addEventListener('resize', fixStageHeight);
@@ -341,7 +345,11 @@ function loadVideo(file) {
   document.getElementById('video-sync').src = videoSrc;
 
   // bg video
-  document.getElementById('bg-video').src = videoSrc;
+  const _bvEl = document.getElementById('bg-video');
+  _bvEl.src = videoSrc;
+  _bvEl.onloadedmetadata = () => {
+    requestAnimationFrame(() => { updateVideoOverlay(); positionSubtitle(); });
+  };
 
   // get native resolution
   const tmp = document.createElement('video');
@@ -590,7 +598,7 @@ function updateVideoOverlay() {
   const ov  = document.getElementById('video-overlay');
   if (!ov || !bgv) return;
   // overlay exactly matches the video element's rendered size
-  const rect = bgv.getBoundingClientRect();
+  const rect      = bgv.getBoundingClientRect();
   const stageRect = document.getElementById('stage').getBoundingClientRect();
   ov.style.left   = (rect.left - stageRect.left) + 'px';
   ov.style.top    = (rect.top  - stageRect.top)  + 'px';
@@ -598,29 +606,36 @@ function updateVideoOverlay() {
   ov.style.height = rect.height + 'px';
 }
 
+function scrollToSubtitle() {
+  // After placing subtitle or during playback, scroll stage-wrap so subtitle is visible
+  const sw = document.getElementById('stage-wrap');
+  const si = document.getElementById('stage-inner');
+  if (!sw || !si) return;
+  const siTop = si.offsetTop;
+  const siH   = si.offsetHeight;
+  const swH   = sw.offsetHeight;
+  const scrollY = siTop - swH / 2 + siH / 2;
+  sw.scrollTo({ top: Math.max(0, scrollY), behavior: 'smooth' });
+}
+
 function positionSubtitle(cIdx) {
   const si = document.getElementById('stage-inner');
   const ov = document.getElementById('video-overlay');
   if (!ov || !si) return;
-  updateVideoOverlay(); // keep overlay in sync
+  updateVideoOverlay();
   const ovW = ov.offsetWidth  || 1;
   const ovH = ov.offsetHeight || 1;
-  const siW = si.offsetWidth  || 0;
-  const siH = si.offsetHeight || 0;
 
-  // get position — % within the video overlay area
   const useIdx = (cIdx !== undefined) ? cIdx : activeCueIdx;
   const pos = getCuePos(useIdx);
   let x = isDragging ? subX : pos.x;
   let y = isDragging ? subY : pos.y;
 
-  // snap to center when dragging
   if (isDragging) {
     if (Math.abs(x-50) < SNAP_THRESHOLD) x = 50;
     if (Math.abs(y-50) < SNAP_THRESHOLD) y = 50;
   }
 
-  // Use transform to center exactly on the % point — no size measurement needed
   si.style.left      = (x / 100 * ovW) + 'px';
   si.style.top       = (y / 100 * ovH) + 'px';
   si.style.transform = 'translate(-50%, -50%)';
@@ -642,7 +657,6 @@ document.getElementById('stage-inner').addEventListener('mousedown', e => {
 });
 document.addEventListener('mousemove', e => {
   if (!isDragging) return;
-  // drag relative to video-overlay (= video area)
   const ov = document.getElementById('video-overlay');
   const ovW = ov ? ov.offsetWidth  : 1;
   const ovH = ov ? ov.offsetHeight : 1;
@@ -1577,7 +1591,9 @@ function _buildGlyph(txt, isHL) {
   if (_glyphCache.has(key)) return _glyphCache.get(key);
 
   const renderPx = MIN_RENDER_PX;
-  const padding  = renderPx * 0.5;
+  // Extra padding for stroke overflow
+  const strokePx = Math.round(renderPx * 0.06);
+  const padding  = strokePx * 3;
 
   const gc   = document.createElement('canvas');
   const gctx = gc.getContext('2d');
@@ -1585,8 +1601,9 @@ function _buildGlyph(txt, isHL) {
   const tw   = gctx.measureText(txt).width;
 
   gc.width  = Math.ceil(tw + padding * 2);
-  gc.height = Math.ceil(renderPx * 1.4);
+  gc.height = Math.ceil(renderPx * 1.5 + padding * 2);
 
+  // Re-set font after size change
   gctx.font         = `900 ${renderPx}px "Arial Black", Arial, sans-serif`;
   gctx.textAlign    = 'center';
   gctx.textBaseline = 'middle';
@@ -1597,13 +1614,13 @@ function _buildGlyph(txt, isHL) {
   const gcx = gc.width / 2;
   const gcy = gc.height / 2;
 
-  gctx.lineWidth   = renderPx * 0.08;
-  gctx.strokeStyle = 'rgba(0,0,0,0.95)';
+  // Step 1: solid black stroke — single pass, no opacity tricks
+  gctx.lineWidth   = strokePx * 2; // strokeText expands outward + inward
+  gctx.strokeStyle = '#000000';
   gctx.strokeText(txt, gcx, gcy);
-  gctx.lineWidth   = renderPx * 0.04;
-  gctx.strokeStyle = 'rgba(0,0,0,0.7)';
-  gctx.strokeText(txt, gcx, gcy);
-  gctx.fillStyle   = isHL ? '#FFE600' : '#FFFFFF';
+
+  // Step 2: solid fill on top — fully opaque, crisp
+  gctx.fillStyle = isHL ? '#FFE600' : '#FFFFFF';
   gctx.fillText(txt, gcx, gcy);
 
   const entry = { canvas: gc, tw };
