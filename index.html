@@ -1194,6 +1194,9 @@ function drawCanvas() {
   const wordSpacingPx  = wordSpacingEm * fontPx;
   ctx.font=`900 ${fontPx}px "Anton","Arial Black","Impact",sans-serif`; ctx.textRendering='geometricPrecision';
   ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.lineJoin='round';
+  ctx.miterLimit=2;
+  ctx.lineWidth = Math.max(4, fontPx*0.08);
   const lines=Array.from(cueDiv.querySelectorAll('.sl-line'));
   const lineH=fontPx*lineSpacingMult, totalH=lineH*lines.length;
   // use dragged position (subX/subY as percent)
@@ -1575,7 +1578,7 @@ function drawChar(ctx, txt, x, y, fontPx, strokeW, isHL) {
   ctx.restore();
 }
 
-const MIN_RENDER_PX = 4000;
+const MIN_RENDER_PX = 2000;
 
 // Glyph cache: key = "text|isHL" → {canvas, width, height}
 // Built once per export, reused every frame — zero lag
