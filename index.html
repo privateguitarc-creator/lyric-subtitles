@@ -1104,18 +1104,20 @@ function jumpToCue(ci) {
 const recCanvas=document.getElementById('rec-canvas');
 
 function drawCanvas() {
-  const ctx=recCanvas.getContext('2d', {alpha:false});
+  const ctx = recCanvas.getContext('2d', {alpha: false, desynchronized: true});
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
-  const W=recCanvas.width, H=recCanvas.height;
-  const bgv=document.getElementById('bg-video');
-  ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H);
-  // Canvas = native video resolution, draw video to fill entire canvas
-  let videoDx=0, videoDy=0, videoDw=W, videoDh=H;
-  if(bgv&&bgv.readyState>=2){
+  const W = recCanvas.width, H = recCanvas.height;
+  const bgv = document.getElementById('bg-video');
+
+  // Draw video frame
+  if (bgv && bgv.readyState >= 2) {
     ctx.drawImage(bgv, 0, 0, W, H);
-    // video fills full canvas — no letterbox needed since canvas = video dimensions
+  } else {
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, H);
   }
+  let videoDx=0, videoDy=0, videoDw=W, videoDh=H;
   if(activeCueIdx<0) return;
   const cueDiv=stageInner.querySelector(`.cue-div[data-cue="${activeCueIdx}"]`);
   if(!cueDiv||!cueDiv.classList.contains('on')) return;
@@ -1146,13 +1148,14 @@ function drawCanvas() {
     let x=centerX-totalWAdj/2;
     chars.forEach(ch=>{
       const txt=ch.textContent.toUpperCase(); let cw=ctx.measureText(txt).width; if(txt===' ') cw+=wordSpacingPx; const cx=x+cw/2;
-      // Crisp outline — thin clean stroke
+      // HD crisp text: thick stroke outline then fill on top
       ctx.lineJoin = 'round';
       ctx.lineCap  = 'round';
-      ctx.lineWidth = Math.max(2, fontPx * 0.05);
-      ctx.strokeStyle = '#000000';
+      ctx.miterLimit = 2;
+      // Stroke width scales with resolution — at 1080p fontPx~100, stroke=6px
+      ctx.lineWidth = Math.max(4, Math.round(fontPx * 0.06));
+      ctx.strokeStyle = 'rgba(0,0,0,0.95)';
       ctx.strokeText(txt, cx, y);
-      // fill
       ctx.fillStyle = ch.classList.contains('hl') ? '#FFE600' : '#FFFFFF';
       ctx.fillText(txt, cx, y);
       x+=cw;
@@ -1176,30 +1179,32 @@ document.getElementById('export-btn').addEventListener('click', async () => {
   const bgv = document.getElementById('bg-video');
   if (!bgv || !bgv.videoWidth) { alert('Video not loaded yet.'); return; }
 
-  // Canvas = exact native video resolution
   const W = bgv.videoWidth;
   const H = bgv.videoHeight;
   recCanvas.width  = W;
   recCanvas.height = H;
 
+  // Use highest quality mimeType available
   const mimeType = ['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm']
     .find(t => MediaRecorder.isTypeSupported(t)) || 'video/webm';
 
   recordedChunks = [];
-  const stream = recCanvas.captureStream(30);
-  try { mediaRecorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 40000000 }); }
+  // Match captureStream fps to video fps (use 60 to never miss a frame)
+  const stream = recCanvas.captureStream(60);
+  try { mediaRecorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 60000000 }); }
   catch(e) { mediaRecorder = new MediaRecorder(stream); }
 
   mediaRecorder.ondataavailable = e => { if (e.data?.size > 0) recordedChunks.push(e.data); };
   mediaRecorder.onstop = () => {
     clearInterval(exportTimerInterval);
-    clearTimeout(exportRafId);
+    cancelAnimationFrame(exportRafId);
     isExporting = false;
+    // remove video timeupdate listener
+    bgv.removeEventListener('timeupdate', onVideoTimeUpdate);
     document.getElementById('export-btn').textContent = '⬇ Export Video';
     document.getElementById('export-btn').classList.remove('exporting');
     document.getElementById('export-progress').classList.remove('on');
     document.getElementById('export-progress').textContent = '';
-
     const blob = new Blob(recordedChunks, { type: mimeType });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
@@ -1209,46 +1214,62 @@ document.getElementById('export-btn').addEventListener('click', async () => {
     stopPlayback();
   };
 
+  // Reset to start, wait for seek
+  bgv.muted = true;
+  bgv.currentTime = 0;
+  await new Promise(r => { bgv.onseeked = () => r(); });
+
   isExporting = true;
   mediaRecorder.start(100);
 
-  // Reset video to start
-  bgv.currentTime = 0;
-  bgv.muted = true; // must be muted for canvas capture
-  await new Promise(r => { bgv.onseeked = r; });
-
-  // Start canvas render loop — frame-perfect, no screen capture
-  let lastFrameTime = -1;
-  function renderFrame() {
-    if (!isExporting) return;
-    const t = bgv.currentTime;
-    // only draw when video has a new frame
-    if (t !== lastFrameTime) {
-      lastFrameTime = t;
-      drawCanvas();
-    }
-    exportRafId = requestAnimationFrame(renderFrame);
+  // Draw on EVERY video frame using requestVideoFrameCallback if available,
+  // otherwise fall back to timeupdate + rAF combo
+  function onVideoTimeUpdate() {
+    // Called by browser every time video renders a new frame
+    drawCanvas();
   }
 
+  if (typeof bgv.requestVideoFrameCallback === 'function') {
+    // Modern browsers: pixel-perfect frame callback
+    function onVideoFrame(now, meta) {
+      if (!isExporting) return;
+      drawCanvas();
+      bgv.requestVideoFrameCallback(onVideoFrame);
+    }
+    bgv.requestVideoFrameCallback(onVideoFrame);
+  } else {
+    // Fallback: timeupdate + rAF
+    bgv.addEventListener('timeupdate', onVideoTimeUpdate);
+    function renderLoop() {
+      if (!isExporting) return;
+      drawCanvas();
+      exportRafId = requestAnimationFrame(renderLoop);
+    }
+    exportRafId = requestAnimationFrame(renderLoop);
+  }
+
+  // Start video + subtitle sync
   bgv.play();
   bgv.onended = () => stopExport();
-  audioStartedAt = performance.now();
-  audioStartOffset = 0;
+
+  // Start the highlight/cue sync engine
   isPlaying = true;
   hideCue(); clearHL();
   activeCueIdx = -1; unitIdx = 0;
+  audioStartedAt = performance.now();
+  audioStartOffset = 0;
   setTimeout(() => {
     hlNextAt = performance.now();
     rafId = requestAnimationFrame(rafLoop);
-    renderFrame();
   }, 30);
 
-  // Timer
+  // Timer display
   const t0 = Date.now();
   exportTimerInterval = setInterval(() => {
     const s = Math.floor((Date.now()-t0)/1000);
     const prog = document.getElementById('export-progress');
-    prog.textContent = '● ' + String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
+    const dur  = bgv.duration ? ' / ' + String(Math.floor(bgv.duration/60)).padStart(2,'0') + ':' + String(Math.floor(bgv.duration%60)).padStart(2,'0') : '';
+    prog.textContent = '● ' + String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0') + dur;
   }, 1000);
 
   document.getElementById('export-btn').textContent = '⏹ Stop Export';
