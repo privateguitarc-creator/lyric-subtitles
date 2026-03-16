@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<link href="https://fonts.googleapis.com/css2?family=Anton&display=swap" rel="stylesheet">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Lyric Subtitle Tool</title>
@@ -1192,7 +1191,7 @@ function drawCanvas() {
   const lineSpacingMult = parseFloat(document.getElementById('r-lspacing').value)||1.25;
   const wordSpacingEm  = parseFloat(document.getElementById('r-wspacing').value)||0;
   const wordSpacingPx  = wordSpacingEm * fontPx;
-  ctx.font=`900 ${fontPx}px "Anton","Arial Black","Impact",Arial,sans-serif`; ctx.textRendering='geometricPrecision';
+  ctx.font=`900 ${fontPx}px "Arial Black","Impact",Arial,sans-serif`; ctx.textRendering='geometricPrecision';
   ctx.textAlign='center'; ctx.textBaseline='middle';
   const lines=Array.from(cueDiv.querySelectorAll('.sl-line'));
   const lineH=fontPx*lineSpacingMult, totalH=lineH*lines.length;
@@ -1575,7 +1574,7 @@ function drawChar(ctx, txt, x, y, fontPx, strokeW, isHL) {
   ctx.restore();
 }
 
-const MIN_RENDER_PX = 3000;
+const MIN_RENDER_PX = 3200; // higher glyph render for crisp 4K but still stable
 
 // Glyph cache: key = "text|isHL" → {canvas, width, height}
 // Built once per export, reused every frame — zero lag
