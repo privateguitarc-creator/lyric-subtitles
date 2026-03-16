@@ -1184,34 +1184,34 @@ document.getElementById('export-btn').addEventListener('click', async () => {
   if (isExporting) { stopExport(); return; }
   if (!cues.length || !videoSrc) { alert('Set up video and lyrics first!'); return; }
 
-  const bgv = document.getElementById('bg-video');
-  if (!bgv || !bgv.videoWidth) { alert('Video not loaded yet.'); return; }
+  // Use a HIDDEN offscreen video element for rendering — never touches the display
+  const renderVid = document.createElement('video');
+  renderVid.src     = videoSrc;
+  renderVid.muted   = true;
+  renderVid.preload = 'auto';
+  renderVid.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;';
+  document.body.appendChild(renderVid);
 
-  const W = bgv.videoWidth;
-  const H = bgv.videoHeight;
+  // Wait for metadata
+  await new Promise((res, rej) => {
+    renderVid.onloadedmetadata = res;
+    renderVid.onerror = rej;
+    setTimeout(res, 5000); // fallback
+  });
+
+  const W        = renderVid.videoWidth  || 1920;
+  const H        = renderVid.videoHeight || 1080;
+  const duration = renderVid.duration;
+  const FPS      = 30;
+  const totalFrames = Math.ceil(duration * FPS);
+
   recCanvas.width  = W;
   recCanvas.height = H;
-
-  isExporting = true;
-  document.getElementById('export-btn').textContent = '⏹ Stop Export';
-  document.getElementById('export-btn').classList.add('exporting');
-  document.getElementById('export-progress').classList.add('on');
-  document.getElementById('export-progress').textContent = 'Seeking to start...';
-
-  // --- OFFLINE FRAME-BY-FRAME RENDER ---
-  // Process every frame faster than real-time by seeking frame-by-frame
-  // No MediaRecorder lag because we control the pace ourselves
-
-  const FPS = 30;
-  const duration = bgv.duration;
-  const totalFrames = Math.ceil(duration * FPS);
-  const frameInterval = 1 / FPS;
 
   const mimeType = ['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm']
     .find(t => MediaRecorder.isTypeSupported(t)) || 'video/webm';
 
   recordedChunks = [];
-  // Use a high fps stream so MediaRecorder never drops frames
   const stream = recCanvas.captureStream(FPS);
   try { mediaRecorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 80000000 }); }
   catch(e) { mediaRecorder = new MediaRecorder(stream); }
@@ -1219,57 +1219,144 @@ document.getElementById('export-btn').addEventListener('click', async () => {
   mediaRecorder.ondataavailable = e => { if (e.data?.size > 0) recordedChunks.push(e.data); };
   mediaRecorder.onstop = () => {
     isExporting = false;
+    document.body.removeChild(renderVid); // remove hidden video
     document.getElementById('export-btn').textContent = '⬇ Export Video';
     document.getElementById('export-btn').classList.remove('exporting');
     document.getElementById('export-progress').classList.remove('on');
     document.getElementById('export-progress').textContent = '';
-    // Show preview modal instead of auto-downloading
     const blob = new Blob(recordedChunks, { type: mimeType });
     showExportPreview(blob, mimeType);
   };
 
-  // Seek video to start
-  bgv.muted = true;
-  bgv.pause();
-  bgv.currentTime = 0;
-  await new Promise(r => { bgv.onseeked = r; });
+  // Seek to start
+  renderVid.currentTime = 0;
+  await new Promise(r => { renderVid.onseeked = r; setTimeout(r, 2000); });
 
+  isExporting = true;
   mediaRecorder.start();
 
-  // Process each frame by seeking
-  async function seekAndDraw(frameIdx) {
+  document.getElementById('export-btn').textContent = '⏹ Stop Export';
+  document.getElementById('export-btn').classList.add('exporting');
+  document.getElementById('export-progress').classList.add('on');
+  document.getElementById('export-progress').textContent = 'Starting render...';
+
+  // Frame-by-frame offline render using hidden video
+  async function renderFrameAt(frameIdx) {
     if (!isExporting) return;
-    const t = frameIdx * frameInterval;
-    if (t > duration) { stopExport(); return; }
+    const t = frameIdx / FPS;
+    if (t > duration + 0.1) { stopExport(); return; }
 
-    // Seek video to this time
-    bgv.currentTime = t;
-    await new Promise(r => { bgv.onseeked = r; });
+    // Seek hidden video to this timestamp
+    renderVid.currentTime = t;
+    await new Promise(r => {
+      const onSeeked = () => { renderVid.removeEventListener('seeked', onSeeked); r(); };
+      renderVid.addEventListener('seeked', onSeeked);
+      setTimeout(r, 500); // safety timeout per frame
+    });
 
     if (!isExporting) return;
 
-    // Update which cue/highlights should be active at time t
+    // Compute which cue+highlights should show at time t
     updateHighlightsForTime(t);
 
-    // Draw frame
-    drawCanvas();
+    // Draw frame: hidden video onto canvas
+    const ctx = recCanvas.getContext('2d', { alpha: false, desynchronized: true });
+    ctx.drawImage(renderVid, 0, 0, W, H);
 
-    // Update progress
-    const pct = Math.round((frameIdx / totalFrames) * 100);
-    const mins = String(Math.floor(t/60)).padStart(2,'0');
-    const secs = String(Math.floor(t%60)).padStart(2,'0');
+    // Draw subtitles on top
+    if (activeCueIdx >= 0) drawSubtitlesOnCanvas(ctx, W, H);
+
+    // Update UI progress
+    const pct  = Math.min(100, Math.round((frameIdx / totalFrames) * 100));
+    const mm   = String(Math.floor(t/60)).padStart(2,'0');
+    const ss   = String(Math.floor(t%60)).padStart(2,'0');
+    const dmm  = String(Math.floor(duration/60)).padStart(2,'0');
+    const dss  = String(Math.floor(duration%60)).padStart(2,'0');
     document.getElementById('export-progress').textContent =
-      `Rendering ${pct}% — ${mins}:${secs} / ${String(Math.floor(duration/60)).padStart(2,'0')}:${String(Math.floor(duration%60)).padStart(2,'0')}`;
+      `Rendering ${pct}% · ${mm}:${ss} / ${dmm}:${dss}`;
 
-    // Yield to browser so UI stays responsive, then next frame
-    await new Promise(r => setTimeout(r, 0));
-    await seekAndDraw(frameIdx + 1);
+    // Yield to browser every 10 frames so UI stays responsive
+    if (frameIdx % 10 === 0) await new Promise(r => setTimeout(r, 0));
+
+    await renderFrameAt(frameIdx + 1);
   }
 
-  await seekAndDraw(0);
+  await renderFrameAt(0);
 });
 
+
 // Compute which cue is active and which units are highlighted at a given time t
+// Draw subtitles directly on canvas without needing DOM highlight classes
+function drawSubtitlesOnCanvas(ctx, W, H) {
+  if (activeCueIdx < 0 || !cues[activeCueIdx]) return;
+  const cue = cues[activeCueIdx];
+  const fontVw = parseFloat(document.getElementById('r-font').value) || 5.5;
+  const fontPx = Math.round(fontVw / 100 * W);
+  const lineSpacing = parseFloat(document.getElementById('r-lspacing').value) || 1.25;
+  const wordSpacingEm = parseFloat(document.getElementById('r-wspacing').value) || 0;
+  const wordSpacingPx = wordSpacingEm * fontPx;
+
+  ctx.font = `900 ${fontPx}px "Arial Black","Impact",Arial,sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round';
+  ctx.lineCap  = 'round';
+  ctx.miterLimit = 2;
+
+  const posX = (cue.posX !== undefined ? cue.posX : 50) / 100;
+  const posY = (cue.posY !== undefined ? cue.posY : 85) / 100;
+  const cx   = posX * W;
+  const lineH = fontPx * lineSpacing;
+  const totalH = lineH * cue.lines.length;
+
+  cue.lines.forEach((line, li) => {
+    const y = posY * H - totalH/2 + lineH*li + lineH/2;
+    const words = line.toUpperCase().split(/\s+/);
+
+    // measure total width with word spacing
+    let totalW = 0;
+    words.forEach((w, wi) => {
+      totalW += ctx.measureText(w).width;
+      if (wi < words.length-1) totalW += ctx.measureText(' ').width + wordSpacingPx;
+    });
+
+    let x = cx - totalW/2;
+
+    // figure out which word index we're at for this line
+    // by counting units before this line
+    let unitsBefore = 0;
+    for (let prevLi = 0; prevLi < li; prevLi++) {
+      unitsBefore += cue.lines[prevLi].split(/\s+/).length;
+    }
+
+    words.forEach((word, wi) => {
+      const cw = ctx.measureText(word).width;
+      const wcx = x + cw/2;
+
+      // check if this word unit is highlighted
+      const globalUnitIdx = stageUnits.findIndex(u =>
+        u.cueIdx === activeCueIdx && u.lineIdx === li
+      );
+      // find the specific unit for this word
+      const cueUnits = stageUnits.filter(u => u.cueIdx === activeCueIdx && u.lineIdx === li);
+      const isHL = cueUnits[wi] ? cueUnits[wi].el.classList.contains('hl') : false;
+
+      // Multi-pass stroke for sharp edges
+      const sw = Math.max(3, fontPx * 0.05);
+      ctx.lineWidth = sw * 3;
+      ctx.strokeStyle = 'rgba(0,0,0,1)';
+      ctx.strokeText(word, wcx, y);
+      ctx.lineWidth = sw * 1.5;
+      ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+      ctx.strokeText(word, wcx, y);
+      ctx.fillStyle = isHL ? '#FFE600' : '#FFFFFF';
+      ctx.fillText(word, wcx, y);
+
+      x += cw + ctx.measureText(' ').width + wordSpacingPx;
+    });
+  });
+}
+
 function updateHighlightsForTime(t) {
   // Find active cue
   let wantCue = -1;
@@ -1319,9 +1406,12 @@ function updateHighlightsForTime(t) {
 }
 
 function stopExport() {
-  isExporting = false; // this stops the seekAndDraw loop
+  isExporting = false;
   cancelAnimationFrame(exportRafId);
   clearInterval(exportTimerInterval);
+  // remove any lingering hidden render video
+  const old = document.querySelectorAll('video[style*="-9999px"]');
+  old.forEach(v => { try { document.body.removeChild(v); } catch(e){} });
   if (mediaRecorder?.state !== 'inactive') mediaRecorder.stop();
 }
 
