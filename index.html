@@ -1,263 +1,332 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Advanced 4K Lyric Subtitle Tool</title>
-
-<link href="https://fonts.googleapis.com/css2?family=Anton&display=swap" rel="stylesheet">
-
-<style>
-body{margin:0;background:#0b0b14;color:white;font-family:Arial;height:100vh;display:flex;flex-direction:column}
-#top{background:#141428;padding:10px;display:flex;gap:10px;flex-wrap:wrap}
-button{background:#e94560;border:none;color:white;padding:6px 12px;border-radius:4px;cursor:pointer}
-input,select{background:#111;color:white;border:1px solid #333;padding:4px}
-textarea{width:100%;height:120px;background:#111;color:white;border:1px solid #333;padding:8px}
-#stage{flex:1;background:black;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden}
-video{max-width:100%;max-height:100%}
-#subtitle{position:absolute;text-align:center;font-family:'Anton',sans-serif;font-size:4vw;color:white;-webkit-text-stroke:4px black;cursor:move}
-canvas{display:none}
-#seek{width:300px}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lyric Subtitle Pro - Standalone</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=JetBrains+Mono&display=swap" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #0d0d1a; color: #e2e8f0; }
+        .ch { paint-order: stroke fill; }
+        input[type="range"] { accent-color: #f43f5e; }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
 </head>
-
 <body>
-
-<div id="top">
-<input type="file" id="videoFile" accept="video/*">
-<button onclick="parseLyrics()">Load Lyrics</button>
-<button onclick="tap()">Tap</button>
-<button onclick="preview()">Preview</button>
-<button onclick="exportVideo()">Export</button>
-
-<select id="mode">
-<option value="word">Word</option>
-<option value="char">Char</option>
-</select>
-
-<label>Start</label>
-<input id="startTime" value="0">
-
-<label>End</label>
-<input id="endTime" placeholder="auto">
-
-<input type="range" id="seek" min="0" max="100" value="0">
-</div>
-
-<textarea id="lyrics" placeholder="Blank line = new cue"></textarea>
-
-<div id="stage">
-<video id="video"></video>
-<div id="subtitle"></div>
-</div>
-
-<canvas id="videoCanvas"></canvas>
-<canvas id="subCanvas"></canvas>
-
-<script>
-
-let cues=[]
-let tapIndex=0
-let dragging=false
-let offsetX=0
-let offsetY=0
-
-const video=document.getElementById("video")
-const subtitle=document.getElementById("subtitle")
-const seek=document.getElementById("seek")
-
-document.getElementById("videoFile").onchange=e=>{
-video.src=URL.createObjectURL(e.target.files[0])
-video.onloadedmetadata=()=>{
-seek.max=video.duration
-}
-}
-
-function parseLyrics(){
-
-cues=[]
-tapIndex=0
-
-const blocks=document.getElementById("lyrics").value.split(/\\n\\n+/)
-
-blocks.forEach(b=>{
-
-const lines=b.split(/\\n/).filter(Boolean)
-
-cues.push({
-lines:lines,
-start:null,
-speed:350
-})
-
-})
-
-}
-
-function tap(){
-
-if(!cues.length) return
-
-if(tapIndex>=cues.length) return
-
-cues[tapIndex].start=video.currentTime
-
-tapIndex++
-
-}
-
-seek.oninput=e=>{
-
-video.currentTime=e.target.value
-
-}
-
-video.ontimeupdate=()=>{
-
-seek.value=video.currentTime
-
-}
-
-function preview(){
-
-video.currentTime=0
-video.play()
-
-requestAnimationFrame(loop)
-
-}
-
-function loop(){
-
-const t=video.currentTime
-
-let active=-1
-
-for(let i=0;i<cues.length;i++){
-
-if(cues[i].start!==null && t>=cues[i].start) active=i
-
-}
-
-if(active>=0){
-
-subtitle.innerHTML=cues[active].lines.join("<br>")
-
-}
-
-if(!video.paused) requestAnimationFrame(loop)
-
-}
-
-subtitle.onmousedown=e=>{
-
-dragging=true
-offsetX=e.offsetX
-offsetY=e.offsetY
-
-}
-
-document.onmousemove=e=>{
-
-if(!dragging) return
-
-subtitle.style.left=(e.pageX-offsetX)+"px"
-subtitle.style.top=(e.pageY-offsetY)+"px"
-
-}
-
-document.onmouseup=()=>dragging=false
-
-async function exportVideo(){
-
-const start=parseFloat(document.getElementById("startTime").value)||0
-const end=parseFloat(document.getElementById("endTime").value)||video.duration
-
-const vCanvas=document.getElementById("videoCanvas")
-const sCanvas=document.getElementById("subCanvas")
-
-const W=video.videoWidth
-const H=video.videoHeight
-
-vCanvas.width=W
-vCanvas.height=H
-
-const SS=3
-
-sCanvas.width=W*SS
-sCanvas.height=H*SS
-
-const vctx=vCanvas.getContext("2d")
-const sctx=sCanvas.getContext("2d")
-
-const stream=vCanvas.captureStream(30)
-
-const recorder=new MediaRecorder(stream,{mimeType:"video/webm"})
-
-const chunks=[]
-
-recorder.ondataavailable=e=>chunks.push(e.data)
-
-recorder.onstop=()=>{
-
-const blob=new Blob(chunks,{type:"video/webm"})
-
-const a=document.createElement("a")
-a.href=URL.createObjectURL(blob)
-a.download="exported_subtitle_video.webm"
-a.click()
-
-}
-
-recorder.start()
-
-video.currentTime=start
-video.play()
-
-function render(){
-
-if(video.currentTime>=end || video.paused || video.ended){
-
-recorder.stop()
-return
-
-}
-
-vctx.drawImage(video,0,0,W,H)
-
-sctx.clearRect(0,0,sCanvas.width,sCanvas.height)
-
-sctx.setTransform(SS,0,0,SS,0,0)
-
-sctx.font="900 "+(W*0.06)+"px Anton"
-sctx.textAlign="center"
-sctx.lineWidth=20
-sctx.strokeStyle="black"
-sctx.fillStyle="white"
-
-const lines=subtitle.innerText.split("\\n")
-
-lines.forEach((l,i)=>{
-
-const y=H*0.85+i*60
-
-sctx.strokeText(l,W/2,y)
-sctx.fillText(l,W/2,y)
-
-})
-
-vctx.drawImage(sCanvas,0,0,W,H)
-
-requestAnimationFrame(render)
-
-}
-
-render()
-
-}
-
-</script>
-
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useRef, useEffect, useCallback } = React;
+
+        // --- Icons (Simplified SVG versions) ---
+        const PlayIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>;
+        const SquareIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>;
+        const DownloadIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>;
+        const ClockIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>;
+        const VideoIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m22 8-6 4 6 4V8Z"></path><rect width="14" height="12" x="2" y="6" rx="2" ry="2"></rect></svg>;
+
+        const MIN_RENDER_PX = 1000;
+        const SNAP_THRESHOLD = 3;
+
+        function App() {
+            const [activeTab, setActiveTab] = useState('setup');
+            const [videoSrc, setVideoSrc] = useState(null);
+            const [videoName, setVideoName] = useState('');
+            const [lyrics, setLyrics] = useState('');
+            const [cues, setCues] = useState([]);
+            const [tapIdx, setTapIdx] = useState(0);
+            const [duration, setDuration] = useState(0);
+            const [currentTime, setCurrentTime] = useState(0);
+            const [isPlaying, setIsPlaying] = useState(false);
+            const [activeCueIdx, setActiveCueIdx] = useState(-1);
+            const [highlightedUnits, setHighlightedUnits] = useState(new Set());
+            const [isExporting, setIsExporting] = useState(false);
+            const [exportProgress, setExportProgress] = useState(0);
+            const [exportBlob, setExportBlob] = useState(null);
+
+            // Settings
+            const [mode, setMode] = useState('word');
+            const [wordSpd, setWordSpd] = useState(350);
+            const [charSpd, setCharSpd] = useState(100);
+            const [fontSize, setFontSize] = useState(5.5);
+
+            const videoRef = useRef(null);
+            const syncVideoRef = useRef(null);
+            const glyphCacheRef = useRef(new Map());
+            const stageUnitsRef = useRef([]);
+
+            const secsToMmss = (s) => {
+                if (s === null || isNaN(s)) return '0:00';
+                const m = Math.floor(s / 60);
+                const sec = Math.floor(s % 60).toString().padStart(2, '0');
+                return `${m}:${sec}`;
+            };
+
+            const handleVideoUpload = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const url = URL.createObjectURL(file);
+                    setVideoSrc(url);
+                    setVideoName(file.name);
+                    const tmp = document.createElement('video');
+                    tmp.src = url;
+                    tmp.onloadedmetadata = () => {
+                        setDuration(tmp.duration);
+                        tmp.remove();
+                    };
+                }
+            };
+
+            const parseLyrics = () => {
+                if (!videoSrc) return alert('Upload video first');
+                const newCues = [];
+                let currentLines = [];
+                lyrics.split('\n').forEach(line => {
+                    const t = line.trim();
+                    if (!t) {
+                        if (currentLines.length) {
+                            newCues.push({ lines: [...currentLines], startTime: null, lineSpeeds: currentLines.map(() => null), posX: 50, posY: 85 });
+                            currentLines = [];
+                        }
+                    } else currentLines.push(t);
+                });
+                if (currentLines.length) newCues.push({ lines: [...currentLines], startTime: null, lineSpeeds: currentLines.map(() => null), posX: 50, posY: 85 });
+                setCues(newCues);
+                setActiveTab('sync');
+            };
+
+            const handleTap = () => {
+                if (!syncVideoRef.current || tapIdx >= cues.length) return;
+                const time = syncVideoRef.current.currentTime;
+                const updated = [...cues];
+                updated[tapIdx].startTime = time;
+                setCues(updated);
+                setTapIdx(prev => prev + 1);
+            };
+
+            const finalizeCues = () => {
+                const timed = cues.filter(c => c.startTime !== null).sort((a, b) => a.startTime - b.startTime);
+                setCues(timed);
+                
+                const units = [];
+                timed.forEach((cue, cIdx) => {
+                    cue.lines.forEach((line, lIdx) => {
+                        if (mode === 'word') {
+                            line.split(/\s+/).forEach((word, wIdx) => {
+                                if (wIdx > 0) units.push({ text: ' ', cueIdx: cIdx, lineIdx: lIdx, isSpace: true });
+                                units.push({ text: word, cueIdx: cIdx, lineIdx: lIdx, isSpace: false });
+                            });
+                        } else {
+                            line.split('').forEach(char => units.push({ text: char, cueIdx: cIdx, lineIdx: lIdx, isSpace: char === ' ' }));
+                        }
+                    });
+                });
+                stageUnitsRef.current = units;
+                setActiveTab('record');
+            };
+
+            const getGlyph = (text, isHL, fontPx) => {
+                const key = `${text}|${isHL ? '1' : '0'}`;
+                if (glyphCacheRef.current.has(key)) return glyphCacheRef.current.get(key);
+                const renderPx = MIN_RENDER_PX;
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                ctx.font = `900 ${renderPx}px "Arial Black", sans-serif`;
+                const m = ctx.measureText(text);
+                canvas.width = m.width + renderPx;
+                canvas.height = renderPx * 1.5;
+                ctx.font = `900 ${renderPx}px "Arial Black", sans-serif`;
+                ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                const cx = canvas.width / 2, cy = canvas.height / 2;
+                ctx.lineWidth = renderPx * 0.08; ctx.strokeStyle = 'black'; ctx.strokeText(text, cx, cy);
+                ctx.fillStyle = isHL ? '#FFE600' : 'white'; ctx.fillText(text, cx, cy);
+                const entry = { canvas, width: m.width };
+                glyphCacheRef.current.set(key, entry);
+                return entry;
+            };
+
+            useEffect(() => {
+                let raf;
+                const update = () => {
+                    if (!videoRef.current || !isPlaying) return;
+                    const t = videoRef.current.currentTime;
+                    setCurrentTime(t);
+                    let found = -1;
+                    for (let i = 0; i < cues.length; i++) {
+                        const c = cues[i];
+                        const end = (i + 1 < cues.length) ? cues[i + 1].startTime : c.startTime + 10;
+                        if (t >= c.startTime && t < end) { found = i; break; }
+                    }
+                    if (found !== activeCueIdx) setActiveCueIdx(found);
+                    if (found !== -1) {
+                        const cue = cues[found];
+                        const elapsed = (t - cue.startTime) * 1000;
+                        const spd = mode === 'char' ? charSpd : wordSpd;
+                        const newHL = new Set();
+                        const cueUnits = stageUnitsRef.current.filter(u => u.cueIdx === found);
+                        let acc = 0;
+                        cueUnits.forEach((u, i) => {
+                            if (acc <= elapsed) newHL.add(i);
+                            if (!u.isSpace) acc += (cue.lineSpeeds[u.lineIdx] || spd);
+                        });
+                        setHighlightedUnits(newHL);
+                    }
+                    raf = requestAnimationFrame(update);
+                };
+                if (isPlaying) raf = requestAnimationFrame(update);
+                return () => cancelAnimationFrame(raf);
+            }, [isPlaying, cues, activeCueIdx, mode, charSpd, wordSpd]);
+
+            const handleExport = async () => {
+                setIsExporting(true);
+                const rv = document.createElement('video');
+                rv.src = videoSrc; rv.muted = true;
+                await new Promise(r => rv.onloadedmetadata = r);
+                const W = rv.videoWidth, H = rv.videoHeight;
+                const canvas = document.createElement('canvas');
+                canvas.width = W; canvas.height = H;
+                const ctx = canvas.getContext('2d');
+                const stream = canvas.captureStream(30);
+                const recorder = new MediaRecorder(stream, { mimeType: 'video/webm', videoBitsPerSecond: 25000000 });
+                const chunks = [];
+                recorder.ondataavailable = e => chunks.push(e.data);
+                recorder.onstop = () => {
+                    const blob = new Blob(chunks, { type: 'video/webm' });
+                    setExportBlob(URL.createObjectURL(blob));
+                    setIsExporting(false);
+                };
+                recorder.start(); rv.play();
+                const loop = () => {
+                    if (rv.ended || rv.paused) { recorder.stop(); return; }
+                    ctx.drawImage(rv, 0, 0, W, H);
+                    const t = rv.currentTime;
+                    let cIdx = -1;
+                    for (let i = 0; i < cues.length; i++) {
+                        if (t >= cues[i].startTime && (i === cues.length - 1 || t < cues[i + 1].startTime)) { cIdx = i; break; }
+                    }
+                    if (cIdx !== -1) {
+                        const cue = cues[cIdx];
+                        const fPx = (fontSize / 100) * W;
+                        const cX = (cue.posX / 100) * W, cY = (cue.posY / 100) * H;
+                        const elapsed = (t - cue.startTime) * 1000;
+                        const spd = mode === 'char' ? charSpd : wordSpd;
+                        const cueUnits = stageUnitsRef.current.filter(u => u.cueIdx === cIdx);
+                        let acc = 0;
+                        const hl = new Set();
+                        cueUnits.forEach((u, i) => { if (acc <= elapsed) hl.add(i); if (!u.isSpace) acc += (cue.lineSpeeds[u.lineIdx] || spd); });
+                        
+                        cue.lines.forEach((line, lIdx) => {
+                            const lineUnits = cueUnits.filter(u => u.lineIdx === lIdx);
+                            let tw = 0;
+                            lineUnits.forEach(u => tw += getGlyph(u.text, false, fPx).width * (fPx / MIN_RENDER_PX));
+                            let lx = cX - tw / 2;
+                            let gIdx = cueUnits.findIndex(u => u.lineIdx === lIdx);
+                            lineUnits.forEach(u => {
+                                const g = getGlyph(u.text, hl.has(gIdx), fPx);
+                                const gw = g.width * (fPx / MIN_RENDER_PX);
+                                const gh = g.canvas.height * (fPx / MIN_RENDER_PX);
+                                if (!u.isSpace) ctx.drawImage(g.canvas, lx + gw/2 - (g.canvas.width * fPx / MIN_RENDER_PX)/2, (cY - (fPx * cue.lines.length * 1.2)/2) + (lIdx * fPx * 1.2), g.canvas.width * fPx / MIN_RENDER_PX, gh);
+                                lx += gw; gIdx++;
+                            });
+                        });
+                    }
+                    setExportProgress(Math.round((rv.currentTime / rv.duration) * 100));
+                    requestAnimationFrame(loop);
+                };
+                loop();
+            };
+
+            return (
+                <div className="flex flex-col h-screen overflow-hidden">
+                    <header className="bg-slate-900 border-b border-slate-800 p-4 flex justify-between items-center">
+                        <div className="flex items-center gap-2">
+                            <VideoIcon />
+                            <h1 className="font-bold text-rose-500">Lyric Subtitle Pro</h1>
+                        </div>
+                        <div className="flex gap-2">
+                            {['setup', 'sync', 'record'].map(t => (
+                                <button key={t} onClick={() => setActiveTab(t)} className={`px-4 py-1 rounded text-xs font-bold uppercase ${activeTab === t ? 'bg-rose-500' : 'bg-slate-800'}`}>{t}</button>
+                            ))}
+                        </div>
+                    </header>
+
+                    <main className="flex-1 relative overflow-hidden flex flex-col">
+                        {activeTab === 'setup' && (
+                            <div className="p-8 max-w-2xl mx-auto w-full space-y-6">
+                                <div onClick={() => document.getElementById('v').click()} className="border-2 border-dashed border-slate-700 p-12 text-center rounded-xl cursor-pointer hover:border-rose-500">
+                                    <input type="file" id="v" className="hidden" onChange={handleVideoUpload} />
+                                    {videoName || 'Click to upload video'}
+                                </div>
+                                <textarea value={lyrics} onChange={e => setLyrics(e.target.value)} className="w-full h-48 bg-slate-800 p-4 rounded-xl outline-none focus:ring-2 ring-rose-500" placeholder="Paste lyrics here..."></textarea>
+                                <button onClick={parseLyrics} className="w-full bg-rose-500 py-3 rounded-xl font-bold">Next: Sync</button>
+                            </div>
+                        )}
+
+                        {activeTab === 'sync' && (
+                            <div className="flex-1 flex flex-col p-4">
+                                <video ref={syncVideoRef} src={videoSrc} controls className="w-full max-h-48 bg-black rounded-xl" />
+                                <div className="flex-1 flex flex-col items-center justify-center space-y-8">
+                                    <div className="text-2xl font-black text-center">{tapIdx < cues.length ? cues[tapIdx].lines.join(' / ') : 'Done!'}</div>
+                                    <button onClick={handleTap} className="w-32 h-32 bg-rose-500 rounded-full font-black text-xl shadow-xl shadow-rose-500/20 active:scale-90 transition-transform">TAP</button>
+                                    <button onClick={finalizeCues} className="bg-emerald-500 px-8 py-2 rounded-xl font-bold">Finalize</button>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'record' && (
+                            <div className="flex-1 flex flex-col">
+                                <div className="bg-slate-900 p-4 flex gap-4 items-center overflow-x-auto">
+                                    <button onClick={() => setIsPlaying(!isPlaying)} className="p-2 bg-rose-500 rounded-full">{isPlaying ? <SquareIcon /> : <PlayIcon />}</button>
+                                    <button onClick={handleExport} className="bg-emerald-500 px-4 py-2 rounded font-bold flex items-center gap-2"><DownloadIcon /> {isExporting ? `Exporting ${exportProgress}%` : 'Export'}</button>
+                                    <div className="flex items-center gap-2 text-xs">
+                                        <span>Font:</span>
+                                        <input type="range" min="1" max="15" step="0.1" value={fontSize} onChange={e => setFontSize(e.target.value)} />
+                                    </div>
+                                </div>
+                                <div className="flex-1 bg-black relative flex items-center justify-center">
+                                    <video ref={videoRef} src={videoSrc} className="max-w-full max-h-full" />
+                                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                        {activeCueIdx !== -1 && (
+                                            <div className="text-center" style={{ position: 'absolute', left: `${cues[activeCueIdx].posX}%`, top: `${cues[activeCueIdx].posY}%`, transform: 'translate(-50%, -50%)' }}>
+                                                {cues[activeCueIdx].lines.map((line, lIdx) => (
+                                                    <div key={lIdx} className="whitespace-nowrap font-black uppercase" style={{ fontSize: `${fontSize}vw` }}>
+                                                        {line.split(mode === 'word' ? /\s+/ : '').map((unit, uIdx) => {
+                                                            const gIdx = stageUnitsRef.current.findIndex(u => u.cueIdx === activeCueIdx && u.lineIdx === lIdx && u.text === unit);
+                                                            return <span key={uIdx} style={{ color: highlightedUnits.has(gIdx) ? '#FFE600' : 'white', WebkitTextStroke: `${fontSize * 0.3}px black` }}>{unit}{mode === 'word' ? ' ' : ''}</span>
+                                                        })}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </main>
+
+                    {exportBlob && (
+                        <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-8 z-50">
+                            <div className="bg-slate-900 p-6 rounded-3xl max-w-2xl w-full space-y-4">
+                                <video src={exportBlob} controls className="w-full rounded-xl" />
+                                <div className="flex gap-4">
+                                    <a href={exportBlob} download="video.webm" className="flex-1 bg-emerald-500 py-3 rounded-xl font-bold text-center">Download</a>
+                                    <button onClick={() => setExportBlob(null)} className="flex-1 bg-slate-800 py-3 rounded-xl font-bold">Close</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
 </body>
 </html>
