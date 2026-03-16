@@ -1316,67 +1316,125 @@ document.getElementById('export-btn').addEventListener('click', async () => {
 // Draw subtitles directly on canvas without needing DOM highlight classes
 function drawSubtitlesOnCanvas(ctx, W, H) {
   if (activeCueIdx < 0 || !cues[activeCueIdx]) return;
-  const cue = cues[activeCueIdx];
 
-  // Read EXACT same settings as the CSS preview
-  const fontVw       = parseFloat(document.getElementById('r-font').value)     || 5.5;
-  const lineSpacing  = parseFloat(document.getElementById('r-lspacing').value) || 1.25;
-  const wordSpEm     = parseFloat(document.getElementById('r-wspacing').value) || 0;
-  const mode         = document.getElementById('r-mode').value; // word or char
+  // Get the video overlay rect on screen — this is our coordinate space
+  const ov = document.getElementById('video-overlay');
+  const si = document.getElementById('stage-inner');
+  if (!ov || !si) return;
 
-  // Font size: same % of canvas width as vw in preview
-  const fontPx      = Math.round(fontVw / 100 * W);
-  const wordSpPx    = wordSpEm * fontPx;
+  const ovRect = ov.getBoundingClientRect();
+  const siRect = si.getBoundingClientRect();
+
+  if (ovRect.width === 0 || ovRect.height === 0) {
+    // Fallback: overlay not visible (export might be headless), use calculated positions
+    drawSubtitlesFallback(ctx, W, H);
+    return;
+  }
+
+  // Scale factor: canvas pixels per screen pixel (of the overlay area)
+  const scaleX = W / ovRect.width;
+  const scaleY = H / ovRect.height;
+
+  // Font size: read computed style from actual DOM
+  const cueDiv = si.querySelector(`.cue-div[data-cue="${activeCueIdx}"]`);
+  if (!cueDiv || cueDiv.style.display === 'none') return;
+
+  const sampleChar = cueDiv.querySelector('.ch');
+  if (!sampleChar) return;
+
+  const computedStyle = window.getComputedStyle(sampleChar);
+  const screenFontPx  = parseFloat(computedStyle.fontSize) || 20;
+  const canvasFontPx  = Math.round(screenFontPx * scaleX);
 
   ctx.save();
-  ctx.font         = `900 ${fontPx}px "Arial Black", Arial, sans-serif`;
-  ctx.textAlign    = 'left';   // we'll manually position each unit
+  ctx.font         = `900 ${canvasFontPx}px "Arial Black", Arial, sans-serif`;
   ctx.textBaseline = 'middle';
   ctx.lineJoin     = 'round';
   ctx.lineCap      = 'round';
   ctx.miterLimit   = 2;
 
-  const posX   = (cue.posX !== undefined ? cue.posX : 50) / 100;
-  const posY   = (cue.posY !== undefined ? cue.posY : 85) / 100;
-  const lineH  = fontPx * lineSpacing;
-  const totalH = lineH * cue.lines.length;
-  const baseY  = posY * H - totalH / 2;
+  const strokeW = Math.max(1, canvasFontPx * 0.03);
 
-  // Stroke thickness: thin — matches CSS text-shadow (1px each side)
-  const strokeW = Math.max(1, fontPx * 0.03);
+  // Walk every .ch element in the active cue and draw it at its screen position
+  const allChars = Array.from(cueDiv.querySelectorAll('.ch'));
+
+  allChars.forEach(charEl => {
+    const ch = charEl.textContent.toUpperCase();
+    if (!ch.trim()) return; // skip spaces (they're layout only)
+
+    const charRect = charEl.getBoundingClientRect();
+
+    // Position relative to overlay
+    const relX = charRect.left - ovRect.left;
+    const relY  = charRect.top  - ovRect.top;
+
+    // Map to canvas coords
+    const cx = (relX + charRect.width  / 2) * scaleX;
+    const cy = (relY + charRect.height / 2) * scaleY;
+
+    const isHL = charEl.classList.contains('hl');
+
+    ctx.textAlign = 'center';
+
+    // Clean outline
+    ctx.lineWidth   = strokeW * 2;
+    ctx.strokeStyle = '#000000';
+    ctx.strokeText(ch, cx, cy);
+
+    // Fill
+    ctx.fillStyle = isHL ? '#FFE600' : '#FFFFFF';
+    ctx.fillText(ch, cx, cy);
+  });
+
+  ctx.restore();
+}
+
+// Fallback when DOM positions unavailable (e.g. during export with hidden stage)
+function drawSubtitlesFallback(ctx, W, H) {
+  if (activeCueIdx < 0 || !cues[activeCueIdx]) return;
+  const cue = cues[activeCueIdx];
+  const fontVw     = parseFloat(document.getElementById('r-font').value)     || 5.5;
+  const lineSpace  = parseFloat(document.getElementById('r-lspacing').value) || 1.25;
+  const wordSpEm   = parseFloat(document.getElementById('r-wspacing').value) || 0;
+  const mode       = document.getElementById('r-mode').value;
+  const fontPx     = Math.round(fontVw / 100 * W);
+  const wordSpPx   = wordSpEm * fontPx;
+  const strokeW    = Math.max(1, fontPx * 0.03);
+
+  ctx.save();
+  ctx.font = `900 ${fontPx}px "Arial Black", Arial, sans-serif`;
+  ctx.textBaseline = 'middle'; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+
+  const posX  = (cue.posX !== undefined ? cue.posX : 50) / 100;
+  const posY  = (cue.posY !== undefined ? cue.posY : 85) / 100;
+  const lineH = fontPx * lineSpace;
+  const totalH = lineH * cue.lines.length;
 
   cue.lines.forEach((line, li) => {
-    const y = baseY + lineH * li + lineH / 2;
-
-    // Build character/word units for this line — same as stageUnits
+    const y = posY * H - totalH/2 + lineH*li + lineH/2;
     const lineUnits = stageUnits.filter(u => u.cueIdx === activeCueIdx && u.lineIdx === li);
+    const spaceW = ctx.measureText(' ').width + wordSpPx;
 
     if (mode === 'char') {
-      // Draw char by char
       const chars = line.toUpperCase().split('');
-      // Measure total line width
       let totalW = 0;
       chars.forEach(ch => { totalW += ctx.measureText(ch).width + (ch === ' ' ? wordSpPx : 0); });
       let x = posX * W - totalW / 2;
-
-      let unitIdx = 0;
+      let ui = 0;
       chars.forEach(ch => {
         const cw = ctx.measureText(ch).width;
-        const isHL = ch !== ' ' && lineUnits[unitIdx] && lineUnits[unitIdx].el.classList.contains('hl');
-        if (ch !== ' ') {
+        if (ch.trim()) {
+          const isHL = lineUnits[ui] && lineUnits[ui].el.classList.contains('hl');
           drawChar(ctx, ch, x, y, fontPx, strokeW, isHL);
-          unitIdx++;
+          ui++;
         }
         x += cw + (ch === ' ' ? wordSpPx : 0);
       });
     } else {
-      // Draw word by word
       const words = line.toUpperCase().split(/\s+/);
-      const spaceW = ctx.measureText(' ').width + wordSpPx;
       let totalW = 0;
       words.forEach((w, wi) => { totalW += ctx.measureText(w).width + (wi < words.length-1 ? spaceW : 0); });
       let x = posX * W - totalW / 2;
-
       words.forEach((word, wi) => {
         const ww = ctx.measureText(word).width;
         const isHL = lineUnits[wi] && lineUnits[wi].el.classList.contains('hl');
@@ -1385,21 +1443,18 @@ function drawSubtitlesOnCanvas(ctx, W, H) {
       });
     }
   });
-
   ctx.restore();
 }
 
-// Draw a single glyph (char or word) with outline matching CSS preview
+// drawChar helper (kept for compatibility)
 function drawChar(ctx, txt, x, y, fontPx, strokeW, isHL) {
   const cx = x + ctx.measureText(txt).width / 2;
   ctx.save();
-  ctx.textAlign = 'center';
-  // Thin clean outline — same as CSS text-shadow: 1px 1px 0 #000, -1px -1px 0 #000 etc.
+  ctx.textAlign   = 'center';
   ctx.lineWidth   = strokeW * 2;
   ctx.strokeStyle = '#000000';
   ctx.strokeText(txt, cx, y);
-  // Fill
-  ctx.fillStyle = isHL ? '#FFE600' : '#FFFFFF';
+  ctx.fillStyle   = isHL ? '#FFE600' : '#FFFFFF';
   ctx.fillText(txt, cx, y);
   ctx.restore();
 }
