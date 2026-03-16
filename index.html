@@ -216,7 +216,7 @@ canvas { display:none; }
 <canvas id="rec-canvas"></canvas>
 
 <!-- Export Preview Modal -->
-<div id="export-modal" style="display:none;pointer-events:auto;position:fixed;top:0;left:0;right:0;bottom:0;width:100vw;height:100vh;background:rgba(0,0,0,0.92);z-index:99999;align-items:center;justify-content:center;flex-direction:column;pointer-events:all;user-select:auto;isolation:isolate;">
+<div id="export-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;width:100vw;height:100vh;background:rgba(0,0,0,0.92);z-index:99999;align-items:center;justify-content:center;flex-direction:column;pointer-events:all;user-select:auto;isolation:isolate;">
   <div style="background:#16213e;border:2px solid #e94560;border-radius:12px;max-width:90vw;width:900px;max-height:95vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 0 40px rgba(233,69,96,0.3);pointer-events:all;user-select:text;">
 
     <!-- Header -->
@@ -1327,7 +1327,7 @@ recCanvas.height = H * EXPORT_SCALE;
   await new Promise(r => { rv.onseeked = r; setTimeout(r, 3000); });
 
   isExporting = true;
-  mediaRecorder.start(100);
+  mediaRecorder.start();
 
   document.getElementById('export-btn').textContent = '⏹ Stop & Preview';
   document.getElementById('export-btn').classList.add('exporting');
@@ -1450,10 +1450,12 @@ recCanvas.height = H * EXPORT_SCALE;
   function drawLoop() {
     if (!isExporting) return;
     const t = rv.currentTime;
-    if (t >= toSec) {
-      stopExport();
-      return;
-    }
+const exportStart = fromSec;
+const exportEnd = toSec;
+    if (t >= exportEnd) {
+  stopExport();
+  return;
+}
 
     const ctx = recCanvas.getContext('2d', {alpha:false});
 ctx.setTransform(EXPORT_SCALE,0,0,EXPORT_SCALE,0,0);
@@ -1704,6 +1706,7 @@ function updateHighlightsForTime(t) {
 }
 
 function stopExport() {
+  if(!isExporting) return;
   isExporting = false;
   isPlaying = false;
   cancelAnimationFrame(exportRafId);
@@ -1716,7 +1719,12 @@ function stopExport() {
   });
   if (mediaRecorder?.state !== 'inactive') {
     try { mediaRecorder.requestData(); } catch(e) {}
+    try {
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.requestData();
     mediaRecorder.stop();
+  }
+} catch(e){}
   }
 }
 
