@@ -781,37 +781,44 @@ function buildLineSpeeds() {
       lbl.textContent = 'C'+(ci+1)+'L'+(li+1);
       row.appendChild(lbl);
 
-      // ── timing input (editable mm:ss) ──
-      const timeInp = document.createElement('input');
-      timeInp.type = 'text';
-      timeInp.value = secsToMmss(cue.startTime);
-      timeInp.placeholder = 'm:ss';
-      timeInp.title = 'Start time — edit directly';
-      timeInp.dataset.ci = ci;
-      timeInp.style.cssText = 'width:52px;font-size:0.72rem;background:#0f3460;border:1px solid #1a3a6a;border-radius:3px;color:#fff;padding:2px 4px;outline:none;flex-shrink:0;';
-      timeInp.addEventListener('change', e => {
-        cues[+e.target.dataset.ci].startTime = mmssToSecs(e.target.value);
-        e.target.value = secsToMmss(cues[+e.target.dataset.ci].startTime);
-        finalizeCues();
-      });
-      // Tab moves to next timing input
-      timeInp.addEventListener('keydown', e => {
-        if (e.key === 'Tab') {
-          e.preventDefault();
-          const allInputs = Array.from(list.querySelectorAll('input[type=text]'));
-          const idx = allInputs.indexOf(e.target);
-          const next = allInputs[idx + (e.shiftKey ? -1 : 1)];
-          if (next) next.focus();
-        }
-        if (e.key === 'Enter') {
-          e.target.blur();
-          const allInputs = Array.from(list.querySelectorAll('input[type=text]'));
-          const idx = allInputs.indexOf(e.target);
-          const next = allInputs[idx + 1];
-          if (next) next.focus();
-        }
-      });
-      row.appendChild(timeInp);
+      // ── timing input — only on first line of cue, continuation indicator on rest ──
+      if (li === 0) {
+        const timeInp = document.createElement('input');
+        timeInp.type = 'text';
+        timeInp.value = secsToMmss(cue.startTime);
+        timeInp.placeholder = 'm:ss';
+        timeInp.title = 'Start time — edit directly';
+        timeInp.dataset.ci = ci;
+        timeInp.style.cssText = 'width:52px;font-size:0.72rem;background:#0f3460;border:1px solid #1a3a6a;border-radius:3px;color:#fff;padding:2px 4px;outline:none;flex-shrink:0;';
+        timeInp.addEventListener('change', e => {
+          cues[+e.target.dataset.ci].startTime = mmssToSecs(e.target.value);
+          e.target.value = secsToMmss(cues[+e.target.dataset.ci].startTime);
+          finalizeCues();
+        });
+        timeInp.addEventListener('keydown', e => {
+          if (e.key === 'Tab') {
+            e.preventDefault();
+            const allInputs = Array.from(list.querySelectorAll('input[type=text]'));
+            const idx = allInputs.indexOf(e.target);
+            const next = allInputs[idx + (e.shiftKey ? -1 : 1)];
+            if (next) next.focus();
+          }
+          if (e.key === 'Enter') {
+            e.target.blur();
+            const allInputs = Array.from(list.querySelectorAll('input[type=text]'));
+            const idx = allInputs.indexOf(e.target);
+            const next = allInputs[idx + 1];
+            if (next) next.focus();
+          }
+        });
+        row.appendChild(timeInp);
+      } else {
+        // Continuation line — show ↳ and cue time dimmed (not editable)
+        const contLbl = document.createElement('span');
+        contLbl.style.cssText = 'width:52px;font-size:0.72rem;color:#333;flex-shrink:0;text-align:center;';
+        contLbl.textContent = '↳ ' + secsToMmss(cue.startTime);
+        row.appendChild(contLbl);
+      }
 
       // ── lyric text (click to jump) ──
       const txtWrap = document.createElement('span');
