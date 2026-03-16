@@ -2,23 +2,24 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lyric Subtitle Tool</title>
+<title>Lyric Sync Tool</title>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
-body { font-family:'Segoe UI',sans-serif; background:#0d0d1a; color:#eee; overflow:hidden; height:100vh; display:flex; flex-direction:column; }
+body { font-family:'Segoe UI',sans-serif; background:#0d0d1a; color:#eee; overflow:hidden; user-select:none; height:100vh; display:flex; flex-direction:column; }
 
-#tabs { display:flex; background:#16213e; border-bottom:2px solid #0f3460; flex-shrink:0; }
+#tabs { display:flex; background:#16213e; border-bottom:2px solid #0f3460; flex-shrink:0; z-index:2; }
 .tab { padding:9px 18px; font-size:0.82rem; font-weight:700; cursor:pointer; color:#666; border-bottom:3px solid transparent; transition:all 0.15s; text-transform:uppercase; letter-spacing:0.5px; }
 .tab.active { color:#e94560; border-bottom-color:#e94560; }
 
-.panel { display:none; padding:12px 16px; background:#16213e; flex-shrink:0; }
+.panel { display:none; padding:12px 16px; background:#16213e; flex-shrink:0; z-index:2; }
 .panel.active { display:block; }
 
 label { font-size:0.66rem; color:#aaa; display:block; margin-bottom:3px; text-transform:uppercase; letter-spacing:0.4px; }
 textarea { width:100%; height:80px; background:#0f3460; border:1px solid #e94560; border-radius:5px; color:#fff; padding:7px 10px; font-size:0.84rem; resize:vertical; outline:none; }
 textarea::placeholder { color:#555; }
-input[type=number], input[type=text] { background:#0f3460; border:1px solid #444; border-radius:4px; color:#fff; padding:4px 7px; font-size:0.82rem; outline:none; }
+input[type=number] { background:#0f3460; border:1px solid #444; border-radius:4px; color:#fff; padding:4px 7px; font-size:0.82rem; outline:none; width:70px; }
 input[type=range] { accent-color:#e94560; cursor:pointer; }
 select { background:#0f3460; color:#fff; border:1px solid #444; border-radius:4px; padding:4px 7px; font-size:0.8rem; outline:none; cursor:pointer; }
 
@@ -34,85 +35,78 @@ button.sec { background:#0f3460; border:1px solid #e94560; }
 button.sec:hover:not(:disabled) { background:#1a4a80; }
 button.grn { background:#1a7a4a; border:1px solid #2ecc71; }
 button.grn:hover:not(:disabled) { background:#145e38; }
+button.grn.rec { background:#c0392b; border-color:#e74c3c; animation:pulse 1s infinite; }
+@keyframes pulse { 0%,100%{box-shadow:0 0 5px 2px rgba(231,76,60,0.4)} 50%{box-shadow:0 0 12px 5px rgba(231,76,60,0.8)} }
 
-/* VIDEO DROP */
-#video-drop { border:2px dashed #1a3a6a; border-radius:8px; padding:20px; text-align:center; color:#555; font-size:0.85rem; cursor:pointer; margin-bottom:10px; transition:all 0.2s; }
-#video-drop:hover { border-color:#e94560; color:#aaa; }
-#video-drop.has { border-color:#2ecc71; color:#2ecc71; }
-#video-preview-wrap { display:none; margin-bottom:8px; }
-#video-preview-wrap video { width:100%; max-height:100px; border-radius:5px; background:#000; display:block; }
+/* SETUP */
+#audio-drop { border:2px dashed #1a3a6a; border-radius:7px; padding:14px; text-align:center; color:#555; font-size:0.83rem; cursor:pointer; margin-bottom:10px; transition:border-color 0.2s; }
+#audio-drop:hover { border-color:#e94560; color:#aaa; }
+#audio-drop.has { border-color:#2ecc71; color:#2ecc71; }
+#audio-player { display:none; margin-top:6px; }
+audio { width:100%; border-radius:5px; }
 
 /* TAP SYNC */
 #tap-cue { font-size:1rem; font-weight:700; color:#fff; text-align:center; padding:12px 8px; min-height:54px; display:flex; align-items:center; justify-content:center; background:#0f3460; border-radius:6px; margin-bottom:8px; letter-spacing:1px; line-height:1.3; }
 #tap-next { font-size:0.74rem; color:#666; text-align:center; margin-bottom:8px; min-height:16px; }
 .tap-hint { font-size:0.68rem; color:#444; text-align:center; margin-top:5px; }
-#timing-list { margin-top:10px; max-height:200px; overflow-y:auto; }
+
+#timing-list { margin-top:10px; max-height:260px; overflow-y:auto; }
 #timing-list::-webkit-scrollbar { width:3px; }
 #timing-list::-webkit-scrollbar-thumb { background:#333; border-radius:2px; }
-.tr { display:flex; gap:7px; align-items:center; padding:4px 2px; border-bottom:1px solid #1a1a3a; font-size:0.78rem; }
-.tr .ti { color:#555; width:24px; flex-shrink:0; font-weight:700; }
-.tr .tt input { width:62px; font-size:0.76rem; background:#0f3460; border:1px solid #444; border-radius:3px; color:#fff; padding:3px 5px; outline:none; }
+.tr { display:flex; gap:7px; align-items:center; padding:3px 0; border-bottom:1px solid #1a1a3a; font-size:0.78rem; cursor:grab; transition:background 0.1s; }
+.tr:active { cursor:grabbing; }
+.tr.drag-over { background:#1a3a6a; border-top:2px solid #e94560; }
+.tr.dragging { opacity:0.4; }
+.tr .ti { color:#555; width:24px; flex-shrink:0; }
+.tr .tt input { width:62px; font-size:0.76rem; }
 .tr .tx { color:#aaa; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .tr .td { color:#e94560; cursor:pointer; padding:0 4px; font-size:0.88rem; flex-shrink:0; }
+.drag-handle { color:#444; font-size:0.9rem; cursor:grab; padding:0 4px; flex-shrink:0; }
 
-/* PREVIEW CTRL BAR */
-#ctrl-bar { background:#16213e; padding:7px 14px; display:flex; flex-direction:column; gap:5px; flex-shrink:0; border-bottom:2px solid #0f3460; }
+/* PREVIEW & RECORD */
+#ctrl-bar { background:#16213e; padding:8px 14px; display:flex; flex-direction:column; gap:6px; flex-shrink:0; border-bottom:2px solid #0f3460; z-index:2; }
 #ctrl-row1 { display:flex; gap:7px; align-items:center; flex-wrap:wrap; }
 #ctrl-row2 { display:flex; gap:14px; align-items:center; flex-wrap:wrap; }
 
 /* SEEK BAR */
 #seek-wrap { display:flex; align-items:center; gap:8px; }
-#seek-bar { flex:1; height:5px; -webkit-appearance:none; appearance:none; background:linear-gradient(to right,#e94560 0%,#0f3460 0%); border-radius:3px; cursor:pointer; outline:none; }
+#seek-bar { flex:1; height:5px; -webkit-appearance:none; appearance:none; background:linear-gradient(to right,#e94560 0%,#e94560 0%,#1a3a6a 0%,#1a3a6a 100%); border-radius:3px; cursor:pointer; outline:none; }
 #seek-bar::-webkit-slider-thumb { -webkit-appearance:none; width:14px; height:14px; background:#e94560; border-radius:50%; cursor:pointer; box-shadow:0 0 4px rgba(233,69,96,0.6); }
-#time-label { font-size:0.75rem; color:#888; min-width:80px; text-align:right; white-space:nowrap; }
-
-/* EXPORT BUTTON */
-#export-btn { background:linear-gradient(135deg,#1a7a4a,#27ae60); border:1px solid #2ecc71; font-size:0.85rem; padding:7px 18px; }
-#export-btn:hover:not(:disabled) { background:linear-gradient(135deg,#145e38,#1e8449); }
-#export-btn.exporting { background:#c0392b; border-color:#e74c3c; animation:pulse 1s infinite; }
-@keyframes pulse { 0%,100%{box-shadow:0 0 6px 2px rgba(231,76,60,0.4)} 50%{box-shadow:0 0 14px 6px rgba(231,76,60,0.8)} }
-#export-progress { font-size:0.75rem; color:#2ecc71; font-weight:700; margin-left:4px; display:none; }
-#export-progress.on { display:inline; }
-
-/* LINE SPEEDS PANEL */
-#line-speeds-panel { background:#080818; border-top:1px solid #0f3460; padding:4px 8px; max-height:180px; overflow-y:auto; flex-shrink:0; display:none; }
-#line-speeds-panel .hint { font-size:0.62rem; color:#444; margin-bottom:3px; text-transform:uppercase; letter-spacing:0.3px; }
+#time-label { font-size:0.75rem; color:#888; min-width:80px; text-align:right; }
+#rec-timer { font-size:0.76rem; color:#e74c3c; font-weight:700; display:none; margin-left:2px; }
+#rec-timer.on { display:inline; }
 
 /* STAGE */
-#stage-wrap { flex:1; overflow:hidden; position:relative; min-height:0; display:flex; align-items:stretch; }
-#stage { width:100%; height:100%; position:relative; background:#000; overflow:hidden; display:flex; align-items:center; justify-content:center; }
-#bg-video { max-width:100%; max-height:100%; width:auto; height:auto; display:block; position:relative; z-index:0; object-fit:contain; }
-#stage-inner { position:absolute; z-index:2; text-align:center; line-height:1.25; cursor:move; }
-#stage-inner.dragging { user-select:none; }
-/* video size control */
-#video-size-wrap { display:flex; align-items:center; gap:6px; }
+#stage-wrap { overflow:hidden; position:relative; flex:1; min-height:0; }
+#stage { background:#00FF00; width:100%; height:100%; min-height:0; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+#stage-inner { text-align:center; width:90%; line-height:1.25; }
 .cue-div { display:none; }
 .cue-div.on { display:block; }
 .sl-line { display:block; white-space:nowrap; }
-.ch { display:inline; font-family:'Arial Black',Arial,sans-serif; font-weight:900; text-transform:uppercase; color:#fff; -webkit-text-stroke: 2px #000; paint-order: stroke fill; transition:color 0.04s; }
+.ch { display:inline; font-family:'Arial Black',Arial,sans-serif; font-weight:900; text-transform:uppercase; color:#fff; text-shadow:2px 2px 0 #000,-2px 2px 0 #000,2px -2px 0 #000,-2px -2px 0 #000,0 3px 8px rgba(0,0,0,0.9); transition:color 0.04s; }
 .ch.hl { color:#FFE600; }
-.ch.sp { display:inline; -webkit-text-stroke:0; }
+.ch.sp { display:inline; }
 
 canvas { display:none; }
 </style>
 </head>
-<body>
+<body style="display:flex;flex-direction:column;height:100vh;overflow:hidden;">
 
 <!-- TABS -->
 <div id="tabs">
   <div class="tab active" data-tab="setup">① Setup</div>
   <div class="tab" data-tab="sync">② Tap Sync</div>
-  <div class="tab" data-tab="record">③ Preview & Export</div>
+  <div class="tab" data-tab="record">③ Preview & Record</div>
 </div>
 
-<!-- ═══════ TAB 1: SETUP ═══════ -->
+<!-- ═══════════════ TAB 1: SETUP ═══════════════ -->
 <div class="panel active" id="panel-setup">
-  <label style="margin-bottom:6px;">1. Upload Your Video</label>
-  <div id="video-drop">🎬 Click or drag &amp; drop your video file (MP4, MOV, MKV, AVI, WEBM)</div>
-  <input type="file" id="video-file-input" accept="video/*" style="display:none">
-  <div id="video-preview-wrap"><video id="video-preview" controls muted></video></div>
+  <label style="margin-bottom:5px;">1. Upload Audio</label>
+  <div id="audio-drop">🎵 Click or drag &amp; drop audio file (MP3, M4A, WAV, OGG)</div>
+  <input type="file" id="audio-file" accept="audio/*" style="display:none">
+  <div id="audio-player"><audio id="audio-setup" controls></audio></div>
 
-  <div style="margin-top:8px;">
+  <div style="margin-top:10px;">
     <label style="margin-bottom:5px;">2. Paste Lyrics — blank line between groups = new cue</label>
     <textarea id="lyrics-input" placeholder="SATGURU TERE CHARNON KI&#10;SATGURU TERE CHARNON KI&#10;&#10;AGAR DHOOL JO MIL JAAE&#10;&#10;SATGURU TERE CHARNON KI&#10;SATGURU TERE CHARNON KI"></textarea>
   </div>
@@ -121,16 +115,16 @@ canvas { display:none; }
     <div class="sl"><label>Mode</label><select id="s-mode"><option value="word">Word by Word</option><option value="char">Char by Char</option></select></div>
     <div class="sl"><label>Word ms</label><input type="range" id="s-wsp" min="80" max="1500" value="350" step="20" style="width:90px;"><span class="vl" id="s-wsp-v">350</span></div>
     <div class="sl"><label>Char ms</label><input type="range" id="s-csp" min="20" max="800" value="100" step="10" style="width:90px;"><span class="vl" id="s-csp-v">100</span></div>
-    <div class="sl"><label>Pause</label><input type="range" id="s-cpause" min="0" max="3000" value="0" step="50" style="width:90px;"><span class="vl" id="s-cpause-v">0ms</span></div>
-    <div class="sl"><label>Font</label><input type="range" id="s-font" min="0.5" max="12" value="5.5" step="0.25" style="width:80px;"><span class="vl" id="s-font-v">5.5vw</span></div>
+    <div class="sl"><label>Cue pause</label><input type="range" id="s-cpause" min="0" max="3000" value="0" step="50" style="width:90px;"><span class="vl" id="s-cpause-v">0ms</span></div>
+    <div class="sl"><label>Font</label><input type="range" id="s-font" min="2" max="10" value="4" step="0.25" style="width:80px;"><span class="vl" id="s-font-v">4vw</span></div>
   </div>
   <div class="row"><button id="setup-go">Next → Tap Sync</button><span id="setup-err" style="font-size:0.76rem;color:#e94560;"></span></div>
 </div>
 
-<!-- ═══════ TAB 2: TAP SYNC ═══════ -->
+<!-- ═══════════════ TAB 2: TAP SYNC ═══════════════ -->
 <div class="panel" id="panel-sync">
-  <video id="video-sync" controls style="width:100%;max-height:80px;border-radius:5px;background:#000;display:block;margin-bottom:8px;" playsinline></video>
-  <div style="font-size:0.76rem;color:#888;margin-bottom:7px;">Press <strong style="color:#e94560;">ENTER</strong> or <strong style="color:#e94560;">TAP</strong> when each lyric starts in the video.</div>
+  <audio id="audio-sync" controls style="width:100%;border-radius:5px;margin-bottom:8px;"></audio>
+  <div style="font-size:0.76rem;color:#888;margin-bottom:7px;">Press <strong style="color:#e94560;">ENTER</strong> or tap <strong style="color:#e94560;">TAP</strong> when each cue starts. Fine-tune times below.</div>
   <div id="tap-cue">Load lyrics first</div>
   <div id="tap-next"></div>
   <div class="row" style="justify-content:center;gap:8px;">
@@ -139,260 +133,167 @@ canvas { display:none; }
     <button id="tap-reset" class="sec">↺ Reset</button>
     <span id="tap-prog" style="font-size:0.76rem;color:#e94560;font-weight:700;"></span>
   </div>
-  <div class="tap-hint">Tap slightly early, then fine-tune below</div>
+  <div class="tap-hint">Tip: tap a hair early, then fine-tune in the table below</div>
 
   <div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;">
-    <label style="margin:0;">Timing — click to edit (m:ss format)</label>
+    <label style="margin:0;">Timing table — edit seconds directly</label>
     <button id="add-cue-btn" class="sec" style="font-size:0.72rem;padding:3px 8px;">+ Add</button>
   </div>
   <div id="timing-list"></div>
   <div class="row" style="margin-top:8px;">
-    <button id="sync-go">Next → Preview &amp; Export</button>
+    <button id="sync-go">Next → Preview &amp; Record</button>
     <button id="sync-back" class="sec">← Back</button>
   </div>
 </div>
 
-<!-- ═══════ TAB 3: PREVIEW & EXPORT ═══════ -->
-<div class="panel" id="panel-record" style="padding:0;">
+<!-- ═══════════════ TAB 3: PREVIEW & RECORD ═══════════════ -->
+<div class="panel" id="panel-record" style="padding:0;flex-shrink:0;">
   <div id="ctrl-bar">
     <div id="ctrl-row1">
       <button id="r-play">▶ Preview</button>
       <button id="r-stop" class="sec">⏹ Stop</button>
-      <button id="export-btn" class="grn">⬇ Export Video</button>
-      <div class="sl" style="margin-left:4px;gap:3px;">
-        <label style="margin:0;font-size:0.65rem;color:#666;">FROM</label>
-        <input type="text" id="export-from" placeholder="0:00" value="0:00"
-          style="width:46px;font-size:0.76rem;background:#0f3460;border:1px solid #2ecc71;border-radius:3px;color:#fff;padding:3px 5px;outline:none;text-align:center;"
-          title="Start time (m:ss)">
-        <label style="margin:0;font-size:0.65rem;color:#666;">TO</label>
-        <input type="text" id="export-to" placeholder="end"
-          style="width:46px;font-size:0.76rem;background:#0f3460;border:1px solid #2ecc71;border-radius:3px;color:#fff;padding:3px 5px;outline:none;text-align:center;"
-          title="End time (m:ss) — leave blank for full video">
-      </div>
-      <span id="export-progress"></span>
-      <div class="sl" style="margin-left:6px;"><label>Mode</label><select id="r-mode"><option value="word">Word</option><option value="char">Char</option></select></div>
+      <button id="r-record" class="grn">⏺ Record</button>
+      <span id="rec-timer">00:00</span>
+      <span id="rec-status-msg" style="font-size:0.75rem;color:#f39c12;margin-left:6px;"></span>
+      <div class="sl" style="margin-left:4px;"><label>Mode</label><select id="r-mode"><option value="word">Word</option><option value="char">Char</option></select></div>
       <div class="sl"><label>Word ms</label><input type="range" id="r-wsp" min="80" max="1500" value="350" step="20" style="width:80px;"><span class="vl" id="r-wsp-v">350</span></div>
       <div class="sl"><label>Char ms</label><input type="range" id="r-csp" min="20" max="800" value="100" step="10" style="width:80px;"><span class="vl" id="r-csp-v">100</span></div>
       <div class="sl"><label>Pause</label><input type="range" id="r-cpause" min="0" max="3000" value="0" step="50" style="width:75px;"><span class="vl" id="r-cpause-v">0ms</span></div>
-      <div class="sl"><label>Font Size</label><input type="range" id="r-font" min="0.5" max="12" value="5.5" step="0.25" style="width:75px;"><span class="vl" id="r-font-v">5.5vw</span></div>
-      <button id="r-reset-pos" class="sec" style="font-size:0.7rem;padding:4px 8px;" title="Reset subtitle position to center">⊕ Reset Pos</button>
+      <div class="sl"><label>Font</label><input type="range" id="r-font" min="2" max="10" value="5.5" step="0.25" style="width:75px;"><span class="vl" id="r-font-v">5.5vw</span></div>
     </div>
-    <div id="ctrl-row2" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
-      <div class="sl"><label>Line Gap</label><input type="range" id="r-lspacing" min="0.8" max="3" value="1.25" step="0.05" style="width:80px;"><span class="vl" id="r-lspacing-v">1.25</span></div>
-      <div class="sl"><label>Word Gap</label><input type="range" id="r-wspacing" min="0" max="1.5" value="0" step="0.05" style="width:80px;"><span class="vl" id="r-wspacing-v">0em</span></div>
-    </div>
+    <!-- SEEK BAR -->
     <div id="seek-wrap">
-      <span style="font-size:0.7rem;color:#555;">0:00</span>
+      <span style="font-size:0.7rem;color:#666;">0:00</span>
       <input type="range" id="seek-bar" min="0" max="100" value="0" step="0.1">
       <span id="time-label">0.0s / 0.0s</span>
     </div>
   </div>
-</div>
 
-<!-- Line speeds panel — between ctrl-bar and stage -->
-<div id="line-speeds-panel">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;">
-    <div class="hint" style="margin:0;">⚡ Speed per line — 🐌 Left=Slow · Right=Fast ⚡ · Click to jump · ✏️ Edit timing · Tab between fields</div>
-    <button id="add-line-btn" style="font-size:0.68rem;padding:2px 8px;background:#1a4a20;border:1px solid #2ecc71;color:#2ecc71;border-radius:4px;cursor:pointer;flex-shrink:0;margin-left:8px;">+ Add Cue</button>
-  </div>
-  <div id="line-speeds-list"></div>
+<!-- Stage lives outside panel so it fills remaining space -->
+<div id="line-speeds-panel" style="background:#080818;border-top:1px solid #0f3460;padding:4px 8px;max-height:130px;overflow-y:auto;flex-shrink:0;">
+  <div style="font-size:0.62rem;color:#444;margin-bottom:3px;text-transform:uppercase;letter-spacing:0.3px;">⚡ Speed per line &nbsp;|&nbsp; 🐌 Left = Slow &nbsp; Right = Fast ⚡ &nbsp;|&nbsp; Click line to jump preview</div>
+  <div id="line-speeds-list"><span style="font-size:0.72rem;color:#333;">Load lyrics in Setup tab first</span></div>
 </div>
-
-<!-- Stage fills all remaining space -->
 <div id="stage-wrap">
-  <div id="stage">
-    <video id="bg-video" playsinline muted></video>
-    <!-- video-overlay: covers video exactly, subtitles live here -->
-    <div id="video-overlay" style="position:absolute;top:0;left:0;width:100%;z-index:2;pointer-events:none;">
-      <!-- alignment guides -->
-      <div id="guide-h" style="position:absolute;top:50%;left:0;right:0;height:1px;background:rgba(0,200,255,0.7);display:none;pointer-events:none;z-index:5;box-shadow:0 0 4px rgba(0,200,255,0.8);"></div>
-      <div id="guide-v" style="position:absolute;left:50%;top:0;bottom:0;width:1px;background:rgba(0,200,255,0.7);display:none;pointer-events:none;z-index:5;box-shadow:0 0 4px rgba(0,200,255,0.8);"></div>
-      <div id="guide-center-dot" style="position:absolute;top:50%;left:50%;width:10px;height:10px;border-radius:50%;background:rgba(0,200,255,0.9);transform:translate(-50%,-50%);display:none;pointer-events:none;z-index:5;"></div>
-      <div id="stage-inner" style="pointer-events:all;"></div>
-    </div>
-  </div>
+  <div id="stage"><div id="stage-inner"></div></div>
 </div>
 
 <canvas id="rec-canvas"></canvas>
-
-<!-- Export Preview Modal -->
-<div id="export-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;width:100vw;height:100vh;background:rgba(0,0,0,0.92);z-index:99999;align-items:center;justify-content:center;flex-direction:column;pointer-events:all;user-select:auto;isolation:isolate;">
-  <div style="background:#16213e;border:2px solid #e94560;border-radius:12px;max-width:90vw;width:900px;max-height:95vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 0 40px rgba(233,69,96,0.3);pointer-events:all;user-select:text;">
-
-    <!-- Header -->
-    <div style="padding:14px 20px;border-bottom:1px solid #0f3460;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-      <div>
-        <div style="font-size:1.1rem;font-weight:700;color:#fff;">🎬 Export Preview</div>
-        <div style="font-size:0.75rem;color:#888;margin-top:2px;">Review your exported video before saving</div>
-      </div>
-      <button onclick="modalDiscard()" style="background:#0f3460;border:1px solid #444;color:#888;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:0.8rem;pointer-events:all;position:relative;z-index:10001;">✕ Close</button>
-    </div>
-
-    <!-- Video Preview -->
-    <div style="flex:1;overflow:hidden;background:#000;display:flex;align-items:center;justify-content:center;min-height:0;padding:12px;">
-      <video id="export-preview-video" controls style="max-width:100%;max-height:60vh;border-radius:8px;display:block;"></video>
-    </div>
-
-    <!-- Action Buttons -->
-    <div style="padding:16px 20px;border-top:1px solid #0f3460;display:flex;gap:10px;align-items:center;justify-content:center;flex-shrink:0;flex-wrap:wrap;">
-      <button onclick="modalSave()" style="background:linear-gradient(135deg,#1a7a4a,#27ae60);border:1px solid #2ecc71;color:#fff;border-radius:7px;padding:10px 28px;font-size:0.95rem;font-weight:700;cursor:pointer;pointer-events:all;position:relative;z-index:10001;">⬇ Save / Download</button>
-      <button onclick="modalDiscard()" style="background:#3a0f0f;border:1px solid #e94560;color:#e94560;border-radius:7px;padding:10px 28px;font-size:0.95rem;font-weight:700;cursor:pointer;pointer-events:all;position:relative;z-index:10001;">✕ Discard &amp; Edit Again</button>
-    </div>
-
-  </div>
-</div>
-
-
+<audio id="audio-rec"></audio>
 
 <script>
 // ══════════════════════════════════════════
 // STATE
 // ══════════════════════════════════════════
-let videoSrc = null;
-let videoNativeW = 0, videoNativeH = 0;
-let renderVideo = null; // hidden video used during export
+let audioSrc = null;
 let cues = [];
-let tapIdx = 0;
-
-// playback
 let audioEl = null;
 let isPlaying = false;
-let rafId = null, hlTimerId = null;
-let activeCueIdx = -1, unitIdx = 0;
+let rafId = null;
+let activeCueIdx = -1;
+let unitIdx = 0;
 let stageUnits = [];
-let audioStartedAt = 0, audioStartOffset = 0;
+let isRecording = false;
+let mediaRecorder = null;
+let recordedChunks = [];
+let recCanvasInterval = null;
+let recTimerInterval = null;
+let audioStartedAt = 0;
+let audioStartOffset = 0;
 let hlNextAt = 0;
+let hlTimerId = null;
 let seekDragging = false;
-
-// export
-let isExporting = false;
-let mediaRecorder = null, recordedChunks = [];
-let exportRafId = null, exportTimerInterval = null;
+let dragSrcIdx = null;
+let tapIdx = 0;
 
 // ══════════════════════════════════════════
 // TABS
 // ══════════════════════════════════════════
 function goTab(name) {
-  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab===name));
-  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id==='panel-'+name));
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-'+name));
   const sw = document.getElementById('stage-wrap');
-  const lsp = document.getElementById('line-speeds-panel');
-  const pb = document.getElementById('panel-record');
-  if (name === 'record') {
-    sw.style.display = 'flex'; sw.style.flex = '1';
-    pb.style.display = 'block';
-    lsp.style.display = cues.length ? 'block' : 'none';
-    requestAnimationFrame(fixStageHeight);
-  } else {
-    sw.style.display = 'none';
-    lsp.style.display = 'none';
-  }
+  sw.style.display = name === 'record' ? 'block' : 'none';
+  if (name === 'record') requestAnimationFrame(() => requestAnimationFrame(fixStageHeight));
 }
-
-function fixStageHeight() {
-  const sw = document.getElementById('stage-wrap');
-  if (!sw || sw.style.display === 'none') return;
-  let used = 0;
-  const tabs = document.getElementById('tabs');
-  if (tabs) used += tabs.offsetHeight;
-  const ctrlBar = document.getElementById('ctrl-bar');
-  if (ctrlBar) used += ctrlBar.offsetHeight;
-  const lsp = document.getElementById('line-speeds-panel');
-  if (lsp && lsp.style.display !== 'none') used += lsp.offsetHeight;
-  const h = Math.max(120, window.innerHeight - used);
-  sw.style.height = h + 'px';
-  document.getElementById('stage').style.height = h + 'px';
-  requestAnimationFrame(() => { updateVideoOverlay(); if(typeof positionSubtitle==='function') positionSubtitle(); });
-}
-window.addEventListener('resize', fixStageHeight);
 
 document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
   const name = t.dataset.tab;
-  if (name === 'record' && cues.length) {
-    finalizeCues(); syncControls(); buildStage(); buildLineSpeeds();
+  if (name === 'setup' && cues.length > 0) {
+    document.getElementById('lyrics-input').value = cues.map(c => c.lines.join('\n')).join('\n\n');
   }
-  if (name === 'sync' && cues.length) {
+  if (name === 'record' && cues.length > 0) {
+    finalizeCues(); syncControlsToRecord(); buildStage(); buildLineSpeeds();
+  }
+  if (name === 'sync' && cues.length > 0) {
     renderTimingList(); updateTapUI();
   }
   goTab(name);
 }));
 
+function fixStageHeight() {
+  const sw = document.getElementById('stage-wrap');
+  if (!sw || sw.style.display === 'none') return;
+  let usedH = 0;
+  const tabs = document.getElementById('tabs');
+  if (tabs) usedH += tabs.getBoundingClientRect().height;
+  const ctrlBar = document.getElementById('ctrl-bar');
+  if (ctrlBar) usedH += ctrlBar.getBoundingClientRect().height;
+  const sp = document.getElementById('line-speeds-panel');
+  if (sp) usedH += sp.getBoundingClientRect().height;
+  const remaining = Math.max(150, window.innerHeight - usedH);
+  sw.style.height = remaining + 'px';
+  document.getElementById('stage').style.height = remaining + 'px';
+}
+window.addEventListener('resize', fixStageHeight);
+
 // ══════════════════════════════════════════
-// VIDEO UPLOAD
+// AUDIO UPLOAD
 // ══════════════════════════════════════════
-const videoDrop = document.getElementById('video-drop');
-videoDrop.addEventListener('click', () => document.getElementById('video-file-input').click());
-videoDrop.addEventListener('dragover', e => { e.preventDefault(); videoDrop.style.borderColor='#e94560'; });
-videoDrop.addEventListener('dragleave', () => videoDrop.style.borderColor='');
-videoDrop.addEventListener('drop', e => { e.preventDefault(); videoDrop.style.borderColor=''; loadVideo(e.dataTransfer.files[0]); });
-document.getElementById('video-file-input').addEventListener('change', e => loadVideo(e.target.files[0]));
+const audioDrop = document.getElementById('audio-drop');
+audioDrop.addEventListener('click', () => document.getElementById('audio-file').click());
+audioDrop.addEventListener('dragover', e => { e.preventDefault(); audioDrop.style.borderColor='#e94560'; });
+audioDrop.addEventListener('dragleave', () => audioDrop.style.borderColor='');
+audioDrop.addEventListener('drop', e => { e.preventDefault(); audioDrop.style.borderColor=''; loadAudio(e.dataTransfer.files[0]); });
+document.getElementById('audio-file').addEventListener('change', e => loadAudio(e.target.files[0]));
 
-function loadVideo(file) {
-  if (!file || !file.type.startsWith('video/')) { alert('Please upload a video file.'); return; }
-  if (videoSrc) URL.revokeObjectURL(videoSrc);
-  videoSrc = URL.createObjectURL(file);
-
-  // setup preview
-  const prev = document.getElementById('video-preview');
-  prev.src = videoSrc;
-  document.getElementById('video-preview-wrap').style.display = 'block';
-
-  // sync video
-  document.getElementById('video-sync').src = videoSrc;
-
-  // bg video
-  document.getElementById('bg-video').src = videoSrc;
-
-  // get native resolution
-  const tmp = document.createElement('video');
-  tmp.src = videoSrc;
-  tmp.onloadedmetadata = () => {
-    videoNativeW = tmp.videoWidth;
-    videoNativeH = tmp.videoHeight;
-    // auto-fill export TO field
-    if (tmp.duration && isFinite(tmp.duration)) {
-      const d = tmp.duration;
-      const m = String(Math.floor(d/60)).padStart(2,'0');
-      const s = (d%60).toFixed(1).padStart(4,'0');
-      const toEl = document.getElementById('export-to');
-      if (toEl) { toEl.value = m+':'+s; toEl.placeholder = m+':'+s; }
-    }
-    tmp.remove();
-  };
-
-  videoDrop.textContent = '✅ ' + file.name;
-  videoDrop.classList.add('has');
+function loadAudio(file) {
+  if (!file) return;
+  if (audioSrc) URL.revokeObjectURL(audioSrc);
+  audioSrc = URL.createObjectURL(file);
+  document.getElementById('audio-setup').src = audioSrc;
+  document.getElementById('audio-sync').src = audioSrc;
+  document.getElementById('audio-rec').src = audioSrc;
+  document.getElementById('audio-player').style.display = 'block';
+  audioDrop.textContent = '✅ ' + file.name;
+  audioDrop.classList.add('has');
 }
 
 // ══════════════════════════════════════════
 // SETUP SLIDERS
 // ══════════════════════════════════════════
 [['s-wsp','s-wsp-v',''],['s-csp','s-csp-v',''],['s-cpause','s-cpause-v','ms'],['s-font','s-font-v','vw']].forEach(([id,vid,suf]) => {
-  document.getElementById(id).addEventListener('input', e => document.getElementById(vid).textContent = e.target.value+suf);
+  document.getElementById(id).addEventListener('input', e => { document.getElementById(vid).textContent = e.target.value + suf; });
 });
 
 // ══════════════════════════════════════════
-// SETUP → NEXT
+// LOAD LYRICS
 // ══════════════════════════════════════════
 document.getElementById('setup-go').addEventListener('click', () => {
   const raw = document.getElementById('lyrics-input').value.trim();
   const err = document.getElementById('setup-err');
-  if (!videoSrc) { err.textContent = '⚠ Upload video first'; return; }
+  if (!audioSrc) { err.textContent = '⚠ Upload audio first'; return; }
   if (!raw) { err.textContent = '⚠ Paste lyrics first'; return; }
   err.textContent = '';
   cues = [];
   let cur = [];
   raw.split('\n').forEach(line => {
     const t = line.trim();
-    if (!t) { if (cur.length) { cues.push({lines:[...cur],startTime:null,endTime:null,lineSpeeds:[],posX:50,posY:85}); cur=[]; } }
+    if (!t) { if (cur.length) { cues.push({lines:[...cur], startTime:null, endTime:null, lineSpeeds:[]}); cur=[]; } }
     else cur.push(t);
   });
-  if (cur.length) cues.push({lines:[...cur],startTime:null,endTime:null,lineSpeeds:[],posX:50,posY:85});
-  cues.forEach(c => {
-    while(c.lineSpeeds.length<c.lines.length) c.lineSpeeds.push(null);
-    if(c.posX===undefined) c.posX=50;
-    if(c.posY===undefined) c.posY=85;
-  });
+  if (cur.length) cues.push({lines:[...cur], startTime:null, endTime:null, lineSpeeds:[]});
+  cues.forEach(c => { while(c.lineSpeeds.length < c.lines.length) c.lineSpeeds.push(null); });
   initTapSync();
   goTab('sync');
 });
@@ -400,17 +301,17 @@ document.getElementById('setup-go').addEventListener('click', () => {
 // ══════════════════════════════════════════
 // TAP SYNC
 // ══════════════════════════════════════════
-const tapCueEl = document.getElementById('tap-cue');
+const tapCueEl  = document.getElementById('tap-cue');
 const tapNextEl = document.getElementById('tap-next');
 const tapProgEl = document.getElementById('tap-prog');
-const tapBtn = document.getElementById('tap-btn');
-const tapUndo = document.getElementById('tap-undo');
-const syncVideo = document.getElementById('video-sync');
+const tapBtn    = document.getElementById('tap-btn');
+const tapUndo   = document.getElementById('tap-undo');
+const syncAudio = document.getElementById('audio-sync');
 
 function initTapSync() {
-  const already = cues.filter(c=>c.startTime!==null).length;
+  const already = cues.filter(c => c.startTime !== null).length;
   tapIdx = already > 0 ? already : 0;
-  if (already===0) cues.forEach(c=>c.startTime=null);
+  if (already === 0) cues.forEach(c => c.startTime = null);
   tapBtn.disabled = tapIdx >= cues.length;
   tapUndo.disabled = tapIdx === 0;
   updateTapUI(); renderTimingList();
@@ -418,38 +319,44 @@ function initTapSync() {
 
 function updateTapUI() {
   if (tapIdx >= cues.length) {
-    tapCueEl.textContent='✅ All cues tapped!'; tapNextEl.textContent=''; tapBtn.disabled=true;
+    tapCueEl.textContent = '✅ All cues tapped!';
+    tapNextEl.textContent = ''; tapBtn.disabled = true;
   } else {
     tapCueEl.textContent = cues[tapIdx].lines.join('  |  ');
-    tapNextEl.textContent = tapIdx+1<cues.length ? 'Next → '+cues[tapIdx+1].lines.join(' | ') : '(last cue)';
+    tapNextEl.textContent = tapIdx+1 < cues.length ? 'Next → ' + cues[tapIdx+1].lines.join(' | ') : '(last cue)';
     tapBtn.disabled = false;
   }
-  tapProgEl.textContent = tapIdx+' / '+cues.length;
+  tapProgEl.textContent = tapIdx + ' / ' + cues.length;
 }
 
 function doTap() {
-  if (tapIdx>=cues.length) return;
-  cues[tapIdx].startTime = parseFloat(syncVideo.currentTime.toFixed(2));
-  tapIdx++; tapUndo.disabled=false;
+  if (tapIdx >= cues.length) return;
+  cues[tapIdx].startTime = parseFloat(syncAudio.currentTime.toFixed(2));
+  tapIdx++;
+  tapUndo.disabled = false;
   updateTapUI(); renderTimingList();
-  tapProgEl.textContent = tapIdx+' / '+cues.length+' — last: '+secsToMmss(cues[tapIdx-1].startTime);
+  const last = cues[tapIdx-1].startTime;
+  tapProgEl.textContent = (tapIdx) + ' / ' + cues.length + ' — last: ' + secsToMmss(last);
 }
+
 tapBtn.addEventListener('click', doTap);
 tapUndo.addEventListener('click', () => {
-  if (!tapIdx) return; tapIdx--; cues[tapIdx].startTime=null;
-  if (!tapIdx) tapUndo.disabled=true;
+  if (tapIdx === 0) return;
+  tapIdx--; cues[tapIdx].startTime = null;
+  if (tapIdx === 0) tapUndo.disabled = true;
   updateTapUI(); renderTimingList();
 });
 document.getElementById('tap-reset').addEventListener('click', () => {
-  tapIdx=0; cues.forEach(c=>c.startTime=null); tapUndo.disabled=true; updateTapUI(); renderTimingList();
+  tapIdx = 0; cues.forEach(c => c.startTime = null);
+  tapUndo.disabled = true; updateTapUI(); renderTimingList();
 });
 document.getElementById('add-cue-btn').addEventListener('click', () => {
-  cues.push({lines:['NEW LINE'],startTime:null,endTime:null,lineSpeeds:[null]});
+  cues.push({lines:['NEW LINE'], startTime:null, endTime:null, lineSpeeds:[null]});
   renderTimingList();
 });
 document.addEventListener('keydown', e => {
-  if (e.code==='Enter' && document.getElementById('panel-sync').classList.contains('active')
-      && document.activeElement.tagName!=='INPUT' && document.activeElement.tagName!=='TEXTAREA') {
+  if (e.code === 'Enter' && document.getElementById('panel-sync').classList.contains('active')
+      && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
     e.preventDefault(); doTap();
   }
 });
@@ -458,36 +365,56 @@ document.addEventListener('keydown', e => {
 // TIMING HELPERS
 // ══════════════════════════════════════════
 function secsToMmss(s) {
-  if (s===null||s===undefined||isNaN(s)) return '';
-  return Math.floor(s/60)+':'+(s%60).toFixed(1).padStart(4,'0');
+  if (s === null || s === undefined || isNaN(s)) return '';
+  return Math.floor(s/60) + ':' + (s%60).toFixed(1).padStart(4,'0');
 }
 function mmssToSecs(str) {
-  if (!str||!str.trim()) return null;
-  str=str.trim();
-  if (str.includes(':')) { const p=str.split(':'); return parseFloat((parseFloat(p[0])*60+parseFloat(p[1])).toFixed(2)); }
-  const v=parseFloat(str); return isNaN(v)?null:v;
+  if (!str || !str.trim()) return null;
+  str = str.trim();
+  if (str.includes(':')) { const p = str.split(':'); return parseFloat((parseFloat(p[0])*60 + parseFloat(p[1])).toFixed(2)); }
+  const v = parseFloat(str); return isNaN(v) ? null : v;
 }
 
 // ══════════════════════════════════════════
 // TIMING LIST
 // ══════════════════════════════════════════
+let dragSrcIdxTiming = null;
 function renderTimingList() {
   const list = document.getElementById('timing-list');
-  list.innerHTML='';
-  cues.forEach((cue,i) => {
-    const row=document.createElement('div'); row.className='tr';
-    row.innerHTML=`<span class="ti">#${i+1}</span>
-      <span class="tt"><input type="text" value="${secsToMmss(cue.startTime)}" placeholder="m:ss" data-i="${i}" title="m:ss or seconds"></span>
+  list.innerHTML = '';
+  cues.forEach((cue, i) => {
+    const row = document.createElement('div');
+    row.className = 'tr'; row.draggable = true; row.dataset.i = i;
+    row.innerHTML = `<span class="drag-handle" title="Drag to reorder">⠿</span>
+      <span class="ti">#${i+1}</span>
+      <span class="tt"><input type="text" value="${secsToMmss(cue.startTime)}" placeholder="m:ss" data-i="${i}" style="width:62px;font-size:0.76rem;"></span>
       <span class="tx">${cue.lines.join(' | ')}</span>
       <span class="td" data-i="${i}">✕</span>`;
+    row.addEventListener('dragstart', e => { dragSrcIdxTiming = i; row.classList.add('dragging'); e.dataTransfer.effectAllowed='move'; });
+    row.addEventListener('dragend', () => { row.classList.remove('dragging'); list.querySelectorAll('.tr').forEach(r => r.classList.remove('drag-over')); });
+    row.addEventListener('dragover', e => { e.preventDefault(); list.querySelectorAll('.tr').forEach(r => r.classList.remove('drag-over')); row.classList.add('drag-over'); });
+    row.addEventListener('drop', e => {
+      e.preventDefault();
+      if (dragSrcIdxTiming === null || dragSrcIdxTiming === i) return;
+      const moved = cues.splice(dragSrcIdxTiming, 1)[0];
+      cues.splice(i, 0, moved);
+      tapIdx = cues.filter(c => c.startTime !== null).length;
+      dragSrcIdxTiming = null; renderTimingList(); updateTapUI();
+    });
     list.appendChild(row);
   });
   list.querySelectorAll('input').forEach(inp => inp.addEventListener('change', e => {
-    const i=+e.target.dataset.i; cues[i].startTime=mmssToSecs(e.target.value);
-    e.target.value=secsToMmss(cues[i].startTime);
+    const i = +e.target.dataset.i;
+    cues[i].startTime = mmssToSecs(e.target.value);
+    e.target.value = secsToMmss(cues[i].startTime);
   }));
   list.querySelectorAll('.td').forEach(btn => btn.addEventListener('click', e => {
-    cues[+e.target.dataset.i].startTime=null; renderTimingList();
+    e.stopPropagation();
+    const i = +e.target.dataset.i;
+    cues[i].startTime = null;
+    if (tapIdx > i) tapIdx = i;
+    tapIdx = Math.min(tapIdx, cues.length);
+    renderTimingList(); updateTapUI();
   }));
 }
 
@@ -495,208 +422,49 @@ function renderTimingList() {
 // SYNC → RECORD
 // ══════════════════════════════════════════
 document.getElementById('sync-go').addEventListener('click', () => {
-  if (!cues.some(c=>c.startTime!==null)) { alert('Tap at least one cue!'); return; }
-  finalizeCues(); syncControls(); buildStage(); buildLineSpeeds();
+  if (!cues.some(c => c.startTime !== null)) { alert('Tap at least one cue!'); return; }
+  finalizeCues(); syncControlsToRecord(); buildStage(); buildLineSpeeds();
   goTab('record');
-  setTimeout(() => { fixStageHeight(); startPlayback(); }, 100);
+  setTimeout(() => { fixStageHeight(); startPlayback(); }, 150);
 });
 document.getElementById('sync-back').addEventListener('click', () => goTab('setup'));
 
 function finalizeCues() {
-  const timed=cues.filter(c=>c.startTime!==null).sort((a,b)=>a.startTime-b.startTime);
-  const untimed=cues.filter(c=>c.startTime===null);
-  cues.length=0; timed.forEach(c=>cues.push(c)); untimed.forEach(c=>cues.push(c));
+  const timed = cues.filter(c => c.startTime !== null);
+  const untimed = cues.filter(c => c.startTime === null);
+  timed.sort((a,b) => a.startTime - b.startTime);
+  cues.length = 0;
+  timed.forEach(c => cues.push(c));
+  untimed.forEach(c => cues.push(c));
   cues.forEach((c,i) => {
-    c.endTime=(i+1<cues.length&&cues[i+1].startTime!==null)?cues[i+1].startTime:null;
-    if(!c.lineSpeeds) c.lineSpeeds=[];
-    while(c.lineSpeeds.length<c.lines.length) c.lineSpeeds.push(null);
-    if(c.posX===undefined) c.posX=50;
-    if(c.posY===undefined) c.posY=85;
+    c.endTime = (i+1 < cues.length && cues[i+1].startTime !== null) ? cues[i+1].startTime : null;
+    if (!c.lineSpeeds) c.lineSpeeds = [];
+    while (c.lineSpeeds.length < c.lines.length) c.lineSpeeds.push(null);
   });
 }
 
-function syncControls() {
-  [['s-mode','r-mode'],['s-wsp','r-wsp'],['s-csp','r-csp'],['s-cpause','r-cpause'],['s-font','r-font']].forEach(([f,t])=>{
-    const fe=document.getElementById(f),te=document.getElementById(t);
-    if(fe&&te) te.value=fe.value;
+function syncControlsToRecord() {
+  [['s-mode','r-mode'],['s-wsp','r-wsp'],['s-csp','r-csp'],['s-cpause','r-cpause'],['s-font','r-font']].forEach(([f,t]) => {
+    const fe = document.getElementById(f), te = document.getElementById(t);
+    if (fe && te) te.value = fe.value;
   });
   updateRecLabels();
-  // reset spacing to defaults
-  document.getElementById('r-lspacing').value=1.25;
-  document.getElementById('r-lspacing-v').textContent='1.25';
-  document.getElementById('r-wspacing').value=0;
-  document.getElementById('r-wspacing-v').textContent='0em';
 }
 
 // ══════════════════════════════════════════
 // RECORD TAB SLIDERS
 // ══════════════════════════════════════════
 function updateRecLabels() {
-  [['r-wsp','r-wsp-v',''],['r-csp','r-csp-v',''],['r-cpause','r-cpause-v','ms'],['r-font','r-font-v','vw']].forEach(([id,vid,suf])=>{
-    const el=document.getElementById(id); if(el) document.getElementById(vid).textContent=el.value+suf;
+  [['r-wsp','r-wsp-v',''],['r-csp','r-csp-v',''],['r-cpause','r-cpause-v','ms'],['r-font','r-font-v','vw']].forEach(([id,vid,suf]) => {
+    const el = document.getElementById(id);
+    if (el) document.getElementById(vid).textContent = el.value + suf;
   });
 }
-[['r-wsp','r-wsp-v',''],['r-csp','r-csp-v',''],['r-cpause','r-cpause-v','ms'],['r-font','r-font-v','vw']].forEach(([id,vid,suf])=>{
-  document.getElementById(id).addEventListener('input',e=>{
-    document.getElementById(vid).textContent=e.target.value+suf;
-    if(id==='r-font') document.querySelectorAll('.ch').forEach(c=>c.style.fontSize=e.target.value+'vw');
+[['r-wsp','r-wsp-v',''],['r-csp','r-csp-v',''],['r-cpause','r-cpause-v','ms'],['r-font','r-font-v','vw']].forEach(([id,vid,suf]) => {
+  document.getElementById(id).addEventListener('input', e => {
+    document.getElementById(vid).textContent = e.target.value + suf;
+    if (id === 'r-font') document.querySelectorAll('.ch').forEach(c => c.style.fontSize = e.target.value+'vw');
   });
-});
-
-// line spacing
-document.getElementById('r-lspacing').addEventListener('input', e => {
-  const v = e.target.value;
-  document.getElementById('r-lspacing-v').textContent = v;
-  document.getElementById('stage-inner').style.lineHeight = v;
-});
-
-// word spacing
-document.getElementById('r-wspacing').addEventListener('input', e => {
-  const v = e.target.value;
-  document.getElementById('r-wspacing-v').textContent = v + 'em';
-  document.getElementById('stage-inner').style.wordSpacing = v + 'em';
-});
-
-// ══════════════════════════════════════════
-// VIDEO SIZE CONTROL
-// ══════════════════════════════════════════
-// video size slider removed — video always 100%
-
-// ══════════════════════════════════════════
-// DRAGGABLE SUBTITLE POSITION
-// ══════════════════════════════════════════
-let subX = 50, subY = 85; // percent of stage (default: center, near bottom)
-let isDragging = false, dragStartX, dragStartY, dragStartSubX, dragStartSubY;
-
-const SNAP_THRESHOLD = 3;
-
-function getCuePos(cIdx) {
-  // return pos for a specific cue index, fallback to global subX/subY
-  if (cIdx >= 0 && cues[cIdx]) return { x: cues[cIdx].posX, y: cues[cIdx].posY };
-  return { x: subX, y: subY };
-}
-
-function getVideoScreenRect() {
-  const bgv = document.getElementById('bg-video');
-  const stage = document.getElementById('stage');
-  if (!bgv || !stage) return {x:0,y:0,w:0,h:0};
-  const vr = bgv.getBoundingClientRect();
-  const sr = stage.getBoundingClientRect();
-  return { x: vr.left-sr.left, y: vr.top-sr.top, w: vr.width, h: vr.height };
-}
-
-function updateVideoOverlay() {
-  const bgv = document.getElementById('bg-video');
-  const ov  = document.getElementById('video-overlay');
-  if (!ov || !bgv) return;
-  // overlay exactly matches the video element's rendered size
-  const rect = bgv.getBoundingClientRect();
-  const stageRect = document.getElementById('stage').getBoundingClientRect();
-  ov.style.left   = (rect.left - stageRect.left) + 'px';
-  ov.style.top    = (rect.top  - stageRect.top)  + 'px';
-  ov.style.width  = rect.width  + 'px';
-  ov.style.height = rect.height + 'px';
-}
-
-function positionSubtitle(cIdx) {
-  const si = document.getElementById('stage-inner');
-  const ov = document.getElementById('video-overlay');
-  if (!ov || !si) return;
-  updateVideoOverlay(); // keep overlay in sync
-  const ovW = ov.offsetWidth  || 1;
-  const ovH = ov.offsetHeight || 1;
-  const siW = si.offsetWidth  || 0;
-  const siH = si.offsetHeight || 0;
-
-  // get position — % within the video overlay area
-  const useIdx = (cIdx !== undefined) ? cIdx : activeCueIdx;
-  const pos = getCuePos(useIdx);
-  let x = isDragging ? subX : pos.x;
-  let y = isDragging ? subY : pos.y;
-
-  // snap to center when dragging
-  if (isDragging) {
-    if (Math.abs(x-50) < SNAP_THRESHOLD) x = 50;
-    if (Math.abs(y-50) < SNAP_THRESHOLD) y = 50;
-  }
-
-  // Use transform to center exactly on the % point — no size measurement needed
-  si.style.left      = (x / 100 * ovW) + 'px';
-  si.style.top       = (y / 100 * ovH) + 'px';
-  si.style.transform = 'translate(-50%, -50%)';
-
-  // guides
-  const nearH = isDragging && Math.abs(x-50) < SNAP_THRESHOLD+5;
-  const nearV = isDragging && Math.abs(y-50) < SNAP_THRESHOLD+5;
-  document.getElementById('guide-v').style.display  = nearH ? 'block':'none';
-  document.getElementById('guide-h').style.display  = nearV ? 'block':'none';
-  document.getElementById('guide-center-dot').style.display = (nearH&&nearV) ? 'block':'none';
-}
-
-document.getElementById('stage-inner').addEventListener('mousedown', e => {
-  isDragging = true;
-  dragStartX = e.clientX; dragStartY = e.clientY;
-  dragStartSubX = subX; dragStartSubY = subY;
-  document.getElementById('stage-inner').classList.add('dragging');
-  e.preventDefault();
-});
-document.addEventListener('mousemove', e => {
-  if (!isDragging) return;
-  // drag relative to video-overlay (= video area)
-  const ov = document.getElementById('video-overlay');
-  const ovW = ov ? ov.offsetWidth  : 1;
-  const ovH = ov ? ov.offsetHeight : 1;
-  const dx = (e.clientX - dragStartX) / ovW * 100;
-  const dy = (e.clientY - dragStartY) / ovH * 100;
-  subX = Math.max(2, Math.min(98, dragStartSubX + dx));
-  subY = Math.max(2, Math.min(98, dragStartSubY + dy));
-  positionSubtitle();
-});
-document.addEventListener('mouseup', () => {
-  if (!isDragging) return;
-  isDragging = false;
-  document.getElementById('stage-inner').classList.remove('dragging');
-  document.getElementById('guide-v').style.display='none';
-  document.getElementById('guide-h').style.display='none';
-  document.getElementById('guide-center-dot').style.display='none';
-  // snap if close
-  if(Math.abs(subX-50)<SNAP_THRESHOLD) subX=50;
-  if(Math.abs(subY-50)<SNAP_THRESHOLD) subY=50;
-  // Save position to ALL cues so subtitle stays in same place across all lines
-  // (unless user has explicitly set per-cue positions, which is an advanced use case)
-  cues.forEach(c => { c.posX = subX; c.posY = subY; });
-  positionSubtitle();
-});
-
-// touch drag
-document.getElementById('stage-inner').addEventListener('touchstart', e => {
-  const t = e.touches[0];
-  isDragging = true; dragStartX=t.clientX; dragStartY=t.clientY;
-  dragStartSubX=subX; dragStartSubY=subY;
-}, {passive:true});
-document.addEventListener('touchmove', e => {
-  if (!isDragging) return;
-  const t = e.touches[0], sw = document.getElementById('stage');
-  subX = Math.max(5,Math.min(95, dragStartSubX+(t.clientX-dragStartX)/sw.offsetWidth*100));
-  subY = Math.max(5,Math.min(95, dragStartSubY+(t.clientY-dragStartY)/sw.offsetHeight*100));
-  positionSubtitle();
-}, {passive:true});
-document.addEventListener('touchend', ()=>{
-  if(!isDragging) return;
-  isDragging=false;
-  document.getElementById('guide-v').style.display='none';
-  document.getElementById('guide-h').style.display='none';
-  document.getElementById('guide-center-dot').style.display='none';
-  if(Math.abs(subX-50)<SNAP_THRESHOLD) subX=50;
-  if(Math.abs(subY-50)<SNAP_THRESHOLD) subY=50;
-  cues.forEach(c=>{c.posX=subX;c.posY=subY;});
-  positionSubtitle();
-});
-
-document.getElementById('r-reset-pos').addEventListener('click', ()=>{
-  subX=50; subY=85;
-  cues.forEach(c=>{c.posX=50;c.posY=85;});
-  positionSubtitle();
 });
 
 // ══════════════════════════════════════════
@@ -704,1094 +472,464 @@ document.getElementById('r-reset-pos').addEventListener('click', ()=>{
 // ══════════════════════════════════════════
 const stageInner = document.getElementById('stage-inner');
 function buildStage() {
-  stageInner.innerHTML=''; stageUnits=[];
-  const fs=document.getElementById('r-font').value+'vw';
-  const mode=document.getElementById('r-mode').value;
-  cues.forEach((cue,cIdx)=>{
-    const div=document.createElement('div'); div.className='cue-div'; div.dataset.cue=cIdx;
-    cue.lines.forEach((line,li)=>{
-      const span=document.createElement('span'); span.className='sl-line';
-      if(mode==='word'){
-        line.split(/\s+/).forEach((w,wi)=>{
-          if(wi>0){const s=document.createElement('span');s.className='ch sp';s.textContent=' ';s.style.fontSize=fs;span.appendChild(s);}
-          const s=document.createElement('span');s.className='ch';s.textContent=w;s.style.fontSize=fs;
-          span.appendChild(s); stageUnits.push({el:s,cueIdx:cIdx,lineIdx:li});
+  stageInner.innerHTML = ''; stageUnits = [];
+  const fs = document.getElementById('r-font').value + 'vw';
+  const mode = document.getElementById('r-mode').value;
+  cues.forEach((cue, cIdx) => {
+    const div = document.createElement('div');
+    div.className = 'cue-div'; div.dataset.cue = cIdx;
+    cue.lines.forEach((line, li) => {
+      const span = document.createElement('span');
+      span.className = 'sl-line';
+      if (mode === 'word') {
+        line.split(/\s+/).forEach((w, wi) => {
+          if (wi>0) { const s=document.createElement('span'); s.className='ch sp'; s.textContent=' '; s.style.fontSize=fs; span.appendChild(s); }
+          const s = document.createElement('span');
+          s.className='ch'; s.textContent=w; s.style.fontSize=fs;
+          span.appendChild(s); stageUnits.push({el:s, cueIdx:cIdx, lineIdx:li});
         });
       } else {
-        for(let ci=0;ci<line.length;ci++){
-          const ch=line[ci],s=document.createElement('span');
+        for (let ci=0; ci<line.length; ci++) {
+          const ch=line[ci]; const s=document.createElement('span');
           s.className=ch===' '?'ch sp':'ch'; s.textContent=ch; s.style.fontSize=fs;
-          span.appendChild(s); if(ch!==' ') stageUnits.push({el:s,cueIdx:cIdx,lineIdx:li});
+          span.appendChild(s);
+          if (ch!==' ') stageUnits.push({el:s, cueIdx:cIdx, lineIdx:li});
         }
       }
       div.appendChild(span);
-      if(li<cue.lines.length-1) div.appendChild(document.createElement('br'));
+      if (li < cue.lines.length-1) div.appendChild(document.createElement('br'));
     });
     stageInner.appendChild(div);
   });
-  // position subtitle after building
-  requestAnimationFrame(positionSubtitle);
 }
 
-function showCue(idx) {
-  // Step 1: Update position BEFORE showing cue (prevents 1-frame flash)
-  if (idx >= 0 && cues[idx]) {
-    subX = cues[idx].posX !== undefined ? cues[idx].posX : 50;
-    subY = cues[idx].posY !== undefined ? cues[idx].posY : 85;
-    // Pre-position stage-inner immediately, synchronously
-    const si = document.getElementById('stage-inner');
-    const ov = document.getElementById('video-overlay');
-    if (si && ov) {
-      const ovW = ov.offsetWidth  || 1;
-      const ovH = ov.offsetHeight || 1;
-      // Use CSS transform to center so we don't need to know siW/siH
-      // position is % of overlay, transform centers it on that point
-      si.style.left      = (subX / 100 * ovW) + 'px';
-      si.style.top       = (subY / 100 * ovH) + 'px';
-      si.style.transform = 'translate(-50%, -50%)';
-    }
-  }
-  // Step 2: Show the cue div — position already set above
-  document.querySelectorAll('.cue-div').forEach((el,i)=>{
-    el.classList.toggle('on', i===idx);
-    el.style.display = i===idx ? 'block' : 'none';
-  });
+function showCueEl(idx) {
+  document.querySelectorAll('.cue-div').forEach((el,i) => { el.classList.toggle('on', i===idx); el.style.display = i===idx?'block':'none'; });
   activeCueIdx = idx;
 }
 function hideCue() {
-  document.querySelectorAll('.cue-div').forEach(el=>{el.classList.remove('on');el.style.display='none';});
-  activeCueIdx=-1;
+  document.querySelectorAll('.cue-div').forEach(el => { el.classList.remove('on'); el.style.display='none'; });
+  activeCueIdx = -1;
 }
-function clearHL() { document.querySelectorAll('.ch').forEach(c=>c.classList.remove('hl')); }
+function clearHL() { document.querySelectorAll('.ch').forEach(c => c.classList.remove('hl')); }
 
 // ══════════════════════════════════════════
-// LINE SPEEDS
+// LINE SPEEDS PANEL
 // ══════════════════════════════════════════
-function getSpeedLabel(ms) {
-  if(ms<=80)   return '⚡ Very Fast';
-  if(ms<=160)  return '🔥 Fast';
-  if(ms<=300)  return '▶ Normal';
-  if(ms<=600)  return '🐢 Slow';
-  if(ms<=1000) return '🐌 Very Slow';
-  return '🐌🐌 Ultra Slow';
-}
-
 function buildLineSpeeds() {
   const panel = document.getElementById('line-speeds-panel');
   const list  = document.getElementById('line-speeds-list');
-  if (!cues.length) { panel.style.display='none'; return; }
-  panel.style.display = 'block';
+  if (!cues.length) { list.innerHTML = '<span style="font-size:0.72rem;color:#333;">Load lyrics first</span>'; return; }
   list.innerHTML = '';
-  const defSpd = parseInt(document.getElementById('r-wsp').value)||350;
-
+  const defSpd = parseInt(document.getElementById('r-wsp').value) || 350;
   cues.forEach((cue, ci) => {
     if (!cue.lineSpeeds) cue.lineSpeeds = [];
     while (cue.lineSpeeds.length < cue.lines.length) cue.lineSpeeds.push(null);
-
     cue.lines.forEach((line, li) => {
       const spd = cue.lineSpeeds[li] !== null ? cue.lineSpeeds[li] : defSpd;
-      const inv = 1540 - spd; // inverted: 1540 = max(1500)+min(40)
-
       const row = document.createElement('div');
-      row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:3px 4px;border-bottom:1px solid #0f0f22;';
-      row.dataset.ci = ci; row.dataset.li = li;
-
-      // ── drag handle ──
-      const handle = document.createElement('span');
-      handle.textContent = '⠿';
-      handle.title = 'Drag to reorder';
-      handle.style.cssText = 'color:#333;font-size:0.9rem;cursor:grab;flex-shrink:0;padding:0 2px;';
-      handle.draggable = true;
-      row.appendChild(handle);
-
-      // ── cue+line label ──
+      row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:3px 6px;border-bottom:1px solid #111;cursor:pointer;';
+      row.addEventListener('mouseenter', () => row.style.background='#0f0f28');
+      row.addEventListener('mouseleave', () => row.style.background='');
+      row.addEventListener('click', e => { if (e.target.tagName==='INPUT'||e.target.tagName==='BUTTON') return; jumpPreviewToCue(ci); });
       const lbl = document.createElement('span');
-      lbl.style.cssText = 'font-size:0.65rem;color:#555;min-width:38px;flex-shrink:0;font-weight:700;';
-      lbl.textContent = 'C'+(ci+1)+'L'+(li+1);
-      row.appendChild(lbl);
-
-      // ── timing input (editable mm:ss) — every line shows cue start time ──
-      const timeInp = document.createElement('input');
-      timeInp.type = 'text';
-      timeInp.value = secsToMmss(cue.startTime);
-      timeInp.placeholder = 'm:ss';
-      timeInp.title = 'Start time — edit directly';
-      timeInp.dataset.ci = ci;
-      // dim slightly for non-first lines to show they share the same cue time
-      timeInp.style.cssText = `width:52px;font-size:0.72rem;background:#0f3460;border:1px solid ${li===0?'#2a5a9a':'#1a3a6a'};border-radius:3px;color:${li===0?'#fff':'#88a'};padding:2px 4px;outline:none;flex-shrink:0;`;
-      timeInp.addEventListener('change', e => {
-        cues[+e.target.dataset.ci].startTime = mmssToSecs(e.target.value);
-        e.target.value = secsToMmss(cues[+e.target.dataset.ci].startTime);
-        // update all other timing inputs for this cue
-        list.querySelectorAll(`input[data-ci="${ci}"]`).forEach(inp => {
-          inp.value = secsToMmss(cues[ci].startTime);
-        });
-        finalizeCues();
-      });
-      timeInp.addEventListener('keydown', e => {
-        if (e.key === 'Tab') {
-          e.preventDefault();
-          const allInputs = Array.from(list.querySelectorAll('input[type=text]'));
-          const idx = allInputs.indexOf(e.target);
-          const next = allInputs[idx + (e.shiftKey ? -1 : 1)];
-          if (next) next.focus();
-        }
-        if (e.key === 'Enter') {
-          e.target.blur();
-          const allInputs = Array.from(list.querySelectorAll('input[type=text]'));
-          const idx = allInputs.indexOf(e.target);
-          const next = allInputs[idx + 1];
-          if (next) next.focus();
-        }
-      });
-      row.appendChild(timeInp);
-
-      // ── lyric text (click to jump) ──
-      const txtWrap = document.createElement('span');
-      txtWrap.style.cssText = 'display:flex;align-items:center;gap:3px;width:180px;flex-shrink:0;';
-
+      lbl.style.cssText='font-size:0.66rem;color:#444;min-width:40px;font-weight:700;flex-shrink:0;';
+      lbl.textContent = 'C'+(ci+1)+'L'+(li+1); row.appendChild(lbl);
       const txt = document.createElement('span');
-      txt.style.cssText = 'font-size:0.74rem;color:#ccc;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;';
-      txt.title = 'Click to jump preview here';
-      txt.textContent = line;
-      txt.addEventListener('click', () => jumpToCue(ci));
-      txtWrap.appendChild(txt);
-
-      // ── edit button ──
-      const editBtn = document.createElement('button');
-      editBtn.textContent = '✏️';
-      editBtn.title = 'Edit lyric text';
-      editBtn.style.cssText = 'font-size:0.65rem;padding:1px 4px;background:#1a3a6a;border:1px solid #2a5a9a;color:#aaa;border-radius:3px;cursor:pointer;flex-shrink:0;';
-      editBtn.addEventListener('click', () => {
-        // replace span with input
-        const inp = document.createElement('input');
-        inp.type = 'text';
-        inp.value = cues[ci].lines[li];
-        inp.style.cssText = 'font-size:0.74rem;color:#fff;background:#0f3460;border:1px solid #e94560;border-radius:3px;padding:2px 5px;outline:none;flex:1;width:120px;';
-        txtWrap.replaceChild(inp, txt);
-        editBtn.textContent = '✓';
-        editBtn.title = 'Save';
-        editBtn.style.background = '#1a5a2a';
-        editBtn.style.borderColor = '#2ecc71';
-        editBtn.style.color = '#2ecc71';
-        inp.focus(); inp.select();
-
-        const save = () => {
-          const newVal = inp.value.trim() || cues[ci].lines[li];
-          cues[ci].lines[li] = newVal;
-          txt.textContent = newVal;
-          txtWrap.replaceChild(txt, inp);
-          editBtn.textContent = '✏️';
-          editBtn.style.background = '#1a3a6a';
-          editBtn.style.borderColor = '#2a5a9a';
-          editBtn.style.color = '#aaa';
-          editBtn.title = 'Edit lyric text';
-          buildStage(); // rebuild stage with new text
-        };
-        inp.addEventListener('keydown', e => {
-          if (e.key === 'Enter') { e.preventDefault(); save(); }
-          if (e.key === 'Escape') {
-            txtWrap.replaceChild(txt, inp);
-            editBtn.textContent = '✏️';
-            editBtn.style.background = '#1a3a6a';
-            editBtn.style.borderColor = '#2a5a9a';
-            editBtn.style.color = '#aaa';
-          }
-        });
-        inp.addEventListener('blur', save);
-        editBtn.onclick = (e) => { e.stopPropagation(); save(); };
-      });
-      txtWrap.appendChild(editBtn);
-      row.appendChild(txtWrap);
-
-      // ── slow emoji ──
-      const sl1 = document.createElement('span');
-      sl1.textContent = '🐌'; sl1.style.cssText = 'font-size:0.6rem;flex-shrink:0;';
-      row.appendChild(sl1);
-
-      // ── speed slider (inverted: right=fast) ──
+      txt.style.cssText='font-size:0.76rem;color:#ccc;width:200px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;';
+      txt.textContent = line; row.appendChild(txt);
+      const slowL = document.createElement('span'); slowL.style.cssText='font-size:0.62rem;color:#555;flex-shrink:0;'; slowL.textContent='🐌'; row.appendChild(slowL);
       const slider = document.createElement('input');
-      slider.type = 'range'; slider.min = 40; slider.max = 1200;
-      slider.value = inv; slider.step = 10;
-      slider.style.cssText = 'flex:1;min-width:80px;max-width:160px;accent-color:#e94560;';
-      slider.dataset.ci = ci; slider.dataset.li = li;
-      row.appendChild(slider);
-
-      // ── fast emoji ──
-      const sl2 = document.createElement('span');
-      sl2.textContent = '⚡'; sl2.style.cssText = 'font-size:0.6rem;flex-shrink:0;';
-      row.appendChild(sl2);
-
-      // ── ms input (editable) ──
-      const msLbl = document.createElement('input');
-      msLbl.type = 'number';
-      msLbl.min = 40; msLbl.max = 1500; msLbl.step = 10;
-      msLbl.value = spd;
-      msLbl.title = 'Speed in ms — edit directly, Enter/Tab to next';
-      msLbl.style.cssText = 'width:52px;font-size:0.72rem;color:#e94560;font-weight:700;background:#0f3460;border:1px solid #e94560;border-radius:3px;padding:2px 4px;outline:none;flex-shrink:0;text-align:center;';
-      row.appendChild(msLbl);
-
-      // ── speed emoji label ──
+      slider.type='range'; slider.min=40; slider.max=1500; slider.value=1540-spd; slider.step=10;
+      slider.style.cssText='width:110px;flex-shrink:0;accent-color:#e94560;'; row.appendChild(slider);
+      const fastL = document.createElement('span'); fastL.style.cssText='font-size:0.62rem;color:#555;flex-shrink:0;'; fastL.textContent='⚡'; row.appendChild(fastL);
+      const numInput = document.createElement('input');
+      numInput.type='number'; numInput.min=40; numInput.max=1500; numInput.step=10; numInput.value=spd;
+      numInput.style.cssText='width:52px;font-size:0.74rem;background:#0f3460;border:1px solid #e94560;border-radius:4px;color:#fff;padding:2px 4px;text-align:center;flex-shrink:0;outline:none;';
+      row.appendChild(numInput);
       const spdLbl = document.createElement('span');
-      spdLbl.style.cssText = 'font-size:0.68rem;color:#2ecc71;font-weight:700;min-width:74px;flex-shrink:0;';
-      spdLbl.textContent = getSpeedLabel(spd);
-      row.appendChild(spdLbl);
-
-      // ── reset btn ──
-      const resetBtn = document.createElement('button');
-      resetBtn.className = 'sec'; resetBtn.textContent = '↺'; resetBtn.title = 'Reset speed';
-      resetBtn.style.cssText = 'font-size:0.6rem;padding:2px 5px;flex-shrink:0;';
-      row.appendChild(resetBtn);
-
-      // ── delete btn ──
-      const delBtn = document.createElement('button');
-      delBtn.textContent = '✕'; delBtn.title = 'Delete cue';
-      delBtn.style.cssText = 'font-size:0.6rem;padding:2px 5px;flex-shrink:0;background:#3a0f0f;border:1px solid #e94560;color:#e94560;border-radius:4px;cursor:pointer;';
-      row.appendChild(delBtn);
-
-      // slider → update ms input + label
-      slider.addEventListener('input', () => {
-        const v = parseInt(slider.value), actual = 1540 - v;
-        cues[+slider.dataset.ci].lineSpeeds[+slider.dataset.li] = actual;
-        msLbl.value = actual; spdLbl.textContent = getSpeedLabel(actual);
-      });
-
-      // ms input → update slider + label (Enter/Tab moves to next ms input)
-      msLbl.addEventListener('input', () => {
-        const v = Math.max(40, Math.min(1500, parseInt(msLbl.value)||40));
-        cues[ci].lineSpeeds[li] = v;
-        slider.value = 1540 - v;
-        spdLbl.textContent = getSpeedLabel(v);
-      });
-      msLbl.addEventListener('keydown', e => {
+      spdLbl.style.cssText='font-size:0.68rem;color:#2ecc71;font-weight:700;min-width:68px;flex-shrink:0;';
+      spdLbl.textContent = getSpeedLabel(spd); row.appendChild(spdLbl);
+      const resetBtn = document.createElement('button'); resetBtn.className='sec'; resetBtn.textContent='↺'; resetBtn.style.cssText='font-size:0.6rem;padding:2px 5px;flex-shrink:0;'; row.appendChild(resetBtn);
+      const editBtn = document.createElement('button'); editBtn.className='sec'; editBtn.textContent='✏'; editBtn.style.cssText='font-size:0.7rem;padding:2px 5px;flex-shrink:0;background:#1a3a1a;border-color:#2ecc71;'; row.appendChild(editBtn);
+      function applySpeed(ms) {
+        ms = Math.min(1500, Math.max(40, Math.round(ms/10)*10));
+        cue.lineSpeeds[li] = ms; slider.value = 1540-ms; numInput.value = ms; spdLbl.textContent = getSpeedLabel(ms);
+      }
+      slider.addEventListener('input', () => applySpeed(1540 - parseInt(slider.value)));
+      numInput.addEventListener('change', () => { const v=parseInt(numInput.value); if (!isNaN(v)) applySpeed(v); });
+      numInput.addEventListener('keydown', e => {
         if (e.key === 'Enter' || e.key === 'Tab') {
           e.preventDefault();
-          const allMs = Array.from(list.querySelectorAll('input[type=number]'));
-          const idx = allMs.indexOf(msLbl);
-          const next = allMs[idx + (e.shiftKey ? -1 : 1)];
-          if (next) next.focus();
-          else if (e.key === 'Enter') msLbl.blur();
+          const v = parseInt(numInput.value);
+          if (!isNaN(v)) applySpeed(v);
+          // Move focus to next number input
+          const allNums = Array.from(document.querySelectorAll('#line-speeds-list input[type=number]'));
+          const curIdx  = allNums.indexOf(numInput);
+          if (curIdx >= 0 && curIdx < allNums.length - 1) allNums[curIdx + 1].focus();
         }
       });
-
-      // reset listener
-      resetBtn.addEventListener('click', () => {
-        const def = parseInt(document.getElementById('r-wsp').value)||350;
-        cues[+resetBtn.dataset.ci].lineSpeeds[+resetBtn.dataset.li] = null;
-        slider.value = 1540-def; msLbl.value = def; spdLbl.textContent = getSpeedLabel(def);
-      });
-
-      // delete listener
-      delBtn.addEventListener('click', () => {
-        if (cues.length > 1 && confirm('Delete this cue?')) {
-          cues.splice(ci, 1);
-          buildStage(); buildLineSpeeds();
-        }
-      });
-
-      // drag-to-reorder
-      handle.addEventListener('dragstart', e => {
-        e.dataTransfer.setData('text/plain', JSON.stringify({ci,li}));
-        row.style.opacity = '0.4';
-      });
-      handle.addEventListener('dragend', () => row.style.opacity = '1');
-      row.addEventListener('dragover', e => { e.preventDefault(); row.style.borderTop='2px solid #e94560'; });
-      row.addEventListener('dragleave', () => row.style.borderTop='');
-      row.addEventListener('drop', e => {
-        e.preventDefault(); row.style.borderTop='';
-        try {
-          const from = JSON.parse(e.dataTransfer.getData('text/plain'));
-          if (from.ci !== ci) {
-            const moved = cues.splice(from.ci, 1)[0];
-            cues.splice(ci, 0, moved);
-            buildStage(); buildLineSpeeds();
-          }
-        } catch(err){}
-      });
-
+      resetBtn.addEventListener('click', () => { applySpeed(defSpd); cue.lineSpeeds[li]=null; });
+      editBtn.addEventListener('click', () => { const t=prompt('Edit line:', line); if (t===null) return; cue.lines[li]=t.trim()||line; buildStage(); buildLineSpeeds(); });
       list.appendChild(row);
     });
   });
-
-  requestAnimationFrame(fixStageHeight);
+  setTimeout(fixStageHeight, 50);
 }
 
-// Add cue button
-document.getElementById('add-line-btn').addEventListener('click', () => {
-  cues.push({lines:['NEW LINE'], startTime:null, endTime:null, lineSpeeds:[null]});
-  buildStage(); buildLineSpeeds();
-  // focus the new timing input
-  setTimeout(() => {
-    const inputs = document.querySelectorAll('#line-speeds-list input[type=text]');
-    if (inputs.length) inputs[inputs.length-1].focus();
-  }, 100);
-});
+function getSpeedLabel(ms) {
+  if (ms<=80) return '⚡ Very Fast';
+  if (ms<=160) return '🔥 Fast';
+  if (ms<=300) return '▶ Normal';
+  if (ms<=700) return '🐢 Slow';
+  if (ms<=1100) return '🐌 Very Slow';
+  return '🐌🐌 Ultra Slow';
+}
 
+function jumpPreviewToCue(ci) {
+  if (!cues[ci] || cues[ci].startTime === null) return;
+  if (audioEl) { audioEl.currentTime = cues[ci].startTime; audioStartedAt = performance.now(); audioStartOffset = cues[ci].startTime; }
+  clearHL(); hideCue(); activeCueIdx = -1;
+  unitIdx = stageUnits.findIndex(u => u.cueIdx === ci);
+  if (unitIdx < 0) unitIdx = 0;
+  if (!isPlaying) { if (audioEl) audioEl.play().catch(()=>{}); isPlaying = true; hlNextAt = performance.now(); rafId = requestAnimationFrame(rafLoop); }
+}
 
 // ══════════════════════════════════════════
 // SEEK BAR
 // ══════════════════════════════════════════
-const seekBar=document.getElementById('seek-bar');
-const timeLabel=document.getElementById('time-label');
-seekBar.addEventListener('mousedown',()=>seekDragging=true);
-seekBar.addEventListener('touchstart',()=>seekDragging=true,{passive:true});
-seekBar.addEventListener('mouseup',()=>{seekDragging=false;seekTo(parseFloat(seekBar.value));});
-seekBar.addEventListener('touchend',()=>{seekDragging=false;seekTo(parseFloat(seekBar.value));});
-seekBar.addEventListener('input',()=>{
-  const bgv=document.getElementById('bg-video');
-  if(bgv&&bgv.duration) timeLabel.textContent=fmt(parseFloat(seekBar.value))+' / '+fmt(bgv.duration);
-});
+const seekBar = document.getElementById('seek-bar');
+const timeLabel = document.getElementById('time-label');
+seekBar.addEventListener('mousedown', () => seekDragging = true);
+seekBar.addEventListener('touchstart', () => seekDragging = true, {passive:true});
+seekBar.addEventListener('mouseup', () => { seekDragging = false; seekTo(parseFloat(seekBar.value)); });
+seekBar.addEventListener('touchend', () => { seekDragging = false; seekTo(parseFloat(seekBar.value)); });
+seekBar.addEventListener('input', () => { if (audioEl) timeLabel.textContent = fmt(parseFloat(seekBar.value))+' / '+fmt(audioEl.duration||0); });
 
 function seekTo(t) {
-  const bgv=document.getElementById('bg-video');
-  if(!bgv||!isFinite(t)) return;
-  bgv.currentTime=t;
-  audioStartedAt=performance.now(); audioStartOffset=t;
-  clearHL(); hideCue(); unitIdx=0; activeCueIdx=-1;
+  if (!audioEl || !isFinite(t)) return;
+  audioEl.currentTime = t; audioStartedAt = performance.now(); audioStartOffset = t;
+  clearHL(); hideCue(); activeCueIdx = -1;
 }
-
-function fmt(s) {
-  if(!isFinite(s)) return '0:00';
-  return Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');
-}
+function fmt(s) { if (!isFinite(s)) return '0:00'; return Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0'); }
 
 function updateSeekBar(t) {
-  if(seekDragging) return;
-  const bgv=document.getElementById('bg-video');
-  const d=bgv?bgv.duration||0:0;
-  if(t===undefined) t=bgv?bgv.currentTime:0;
-  seekBar.max=d; seekBar.value=t;
-  const pct=d?(t/d*100):0;
-  seekBar.style.background=`linear-gradient(to right,#e94560 ${pct}%,#1a3a6a ${pct}%)`;
-  timeLabel.textContent=fmt(t)+' / '+fmt(d);
+  if (!audioEl || seekDragging) return;
+  if (t===undefined) t = audioEl.currentTime;
+  const d = audioEl.duration||0;
+  seekBar.max = d; seekBar.value = t;
+  const pct = d ? (t/d*100) : 0;
+  seekBar.style.background = `linear-gradient(to right,#e94560 ${pct}%,#1a3a6a ${pct}%)`;
+  timeLabel.textContent = fmt(t)+' / '+fmt(d);
 }
 
 // ══════════════════════════════════════════
-// RAF LOOP — audio-time driven
+// AUDIO TIME
 // ══════════════════════════════════════════
-function getTime() {
-  if (isExporting && renderVideo) {
-    return renderVideo.currentTime;
-  }
-  if (!isPlaying) return bgv ? bgv.currentTime : 0;
+function getAudioTime() {
+  if (!audioEl) return 0;
+  if (!isPlaying) return audioEl.currentTime;
   return audioStartOffset + (performance.now() - audioStartedAt) / 1000;
 }
 
+// ══════════════════════════════════════════
+// RAF LOOP — cue switching driven by audio time
+// ══════════════════════════════════════════
 function rafLoop() {
-  if(!isPlaying) return;
-  const t=getTime();
+  if (!isPlaying) return;
+  const t = getAudioTime();
   updateSeekBar(t);
-  let wantCue=-1;
-  for(let i=0;i<cues.length;i++){
-    const c=cues[i]; if(c.startTime===null) continue;
-    const end=c.endTime!==null?c.endTime:c.startTime+9999;
-    if(t>=c.startTime&&t<end){wantCue=i;break;}
-  }
-  if(wantCue!==activeCueIdx){
-    clearHL(); clearTimeout(hlTimerId);
-    if(wantCue===-1){hideCue();unitIdx=0;}
-    else{
-      showCue(wantCue);
-      unitIdx=stageUnits.findIndex(u=>u.cueIdx===wantCue);
-      if(unitIdx<0) unitIdx=0;
-      hlNextAt=performance.now();
-      scheduleHL();
-    }
-  }
-  rafId=requestAnimationFrame(rafLoop);
-}
-
-function scheduleHL() {
-  clearTimeout(hlTimerId);
-  hlTimerId=setTimeout(hlTick,Math.max(0,hlNextAt-performance.now()));
-}
-
-function hlTick() {
-  if(!isPlaying) return;
-  if(unitIdx>=stageUnits.length) return;
-  const u=stageUnits[unitIdx]; if(u.cueIdx!==activeCueIdx) return;
-  u.el.classList.add('hl');
-  // draw to canvas if exporting
-  if(isExporting) drawCanvas();
-  unitIdx++;
-  const mode=document.getElementById('r-mode').value;
-  const globalSpd=mode==='char'?parseInt(document.getElementById('r-csp').value):parseInt(document.getElementById('r-wsp').value);
-  const cue=cues[u.cueIdx];
-  const lineSpd=cue&&cue.lineSpeeds&&cue.lineSpeeds[u.lineIdx]!=null?cue.lineSpeeds[u.lineIdx]:globalSpd;
-  hlNextAt+=lineSpd; scheduleHL();
-}
-
-// ══════════════════════════════════════════
-// PLAY / STOP
-// ══════════════════════════════════════════
-document.getElementById('r-play').addEventListener('click', startPlayback);
-document.getElementById('r-stop').addEventListener('click', stopPlayback);
-
-function startPlayback() {
-  if(!videoSrc||!cues.length){alert('Set up video and lyrics first!');return;}
-  stopPlayback(); buildStage();
-  const bgv=document.getElementById('bg-video');
-  bgv.src=videoSrc;
-  bgv.currentTime=bgv.currentTime||0;
-  bgv.muted=false;
-  bgv.play().then(()=>{audioStartedAt=performance.now();audioStartOffset=bgv.currentTime; requestAnimationFrame(updateVideoOverlay);}).catch(()=>{});
-  bgv.onended=()=>{if(!isExporting)stopPlayback();};
-  hideCue(); clearHL(); activeCueIdx=-1; unitIdx=0;
-  setTimeout(()=>{isPlaying=true;hlNextAt=performance.now();rafId=requestAnimationFrame(rafLoop);},30);
-}
-
-function stopPlayback() {
-  isPlaying=false; cancelAnimationFrame(rafId); clearTimeout(hlTimerId);
-  const bgv=document.getElementById('bg-video'); if(bgv) bgv.pause();
-  hideCue(); clearHL(); updateSeekBar();
-}
-
-// ══════════════════════════════════════════
-// JUMP TO CUE (from line speeds click)
-// ══════════════════════════════════════════
-function jumpToCue(ci) {
-  if(!cues[ci]||cues[ci].startTime===null) return;
-  const bgv=document.getElementById('bg-video');
-  if(bgv){bgv.currentTime=cues[ci].startTime;audioStartedAt=performance.now();audioStartOffset=cues[ci].startTime;}
-  clearHL();
-  // Show cue directly — no hideCue() to prevent position flash
-  showCue(ci);
-  unitIdx=stageUnits.findIndex(u=>u.cueIdx===ci); if(unitIdx<0) unitIdx=0;
-  if(!isPlaying){
-    bgv.play().catch(()=>{}); isPlaying=true; hlNextAt=performance.now();
-    rafId=requestAnimationFrame(rafLoop);
-  }
-}
-
-// ══════════════════════════════════════════
-// CANVAS DRAW (for export)
-// ══════════════════════════════════════════
-const recCanvas=document.getElementById('rec-canvas');
-
-function drawCanvas() {
-  const ctx = recCanvas.getContext('2d', {alpha: false, desynchronized: true});
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
-  const W = recCanvas.width, H = recCanvas.height;
-  const bgv = document.getElementById('bg-video');
-
-  // Draw video frame
-  if (bgv && bgv.readyState >= 2) {
-    ctx.drawImage(bgv, 0, 0, W, H);
-  } else {
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, W, H);
-  }
-  let videoDx=0, videoDy=0, videoDw=W, videoDh=H;
-  if(activeCueIdx<0) return;
-  const cueDiv=stageInner.querySelector(`.cue-div[data-cue="${activeCueIdx}"]`);
-  if(!cueDiv||!cueDiv.classList.contains('on')) return;
-  // Font size relative to canvas width (= video native width)
-  const fontPx=Math.round(parseFloat(document.getElementById('r-font').value)/100*W);
-  const lineSpacingMult = parseFloat(document.getElementById('r-lspacing').value)||1.25;
-  const wordSpacingEm  = parseFloat(document.getElementById('r-wspacing').value)||0;
-  const wordSpacingPx  = wordSpacingEm * fontPx;
-  ctx.font=`900 ${fontPx}px "Arial Black","Impact",Arial,sans-serif`; ctx.textRendering='geometricPrecision';
-  ctx.textAlign='center'; ctx.textBaseline='middle';
-  const lines=Array.from(cueDiv.querySelectorAll('.sl-line'));
-  const lineH=fontPx*lineSpacingMult, totalH=lineH*lines.length;
-  // use dragged position (subX/subY as percent)
-  // posX/posY are % of video area — on canvas video fills full W×H
-  const cuePos = (activeCueIdx>=0 && cues[activeCueIdx]) ? cues[activeCueIdx] : {posX:50,posY:85};
-  const centerX = ((cuePos.posX !== undefined ? cuePos.posX : 50) / 100) * W;
-  const centerY = ((cuePos.posY !== undefined ? cuePos.posY : 85) / 100) * H;
-  lines.forEach((ln,li)=>{
-    const y=centerY-totalH/2+lineH*li+lineH/2;
-    const chars=Array.from(ln.querySelectorAll('.ch'));
-    const fullTxt=chars.map(c=>c.textContent).join('');
-    const tw=ctx.measureText(fullTxt).width;
-    const scale=tw>W*0.95?(W*0.95)/tw:1;
-    ctx.save();
-    if(scale<1){ctx.translate(W/2,y);ctx.scale(scale,scale);ctx.translate(-W/2,-y);}
-    // measure with word spacing applied
-    let totalWAdj=0; chars.forEach(ch=>{ const utxt=ch.textContent.toUpperCase(); totalWAdj+=ctx.measureText(utxt).width; if(utxt===' ') totalWAdj+=wordSpacingPx; });
-    let x=centerX-totalWAdj/2;
-    chars.forEach(ch=>{
-      const txt=ch.textContent.toUpperCase(); let cw=ctx.measureText(txt).width; if(txt===' ') cw+=wordSpacingPx; const cx=x+cw/2;
-      // 4K-sharp text rendering
-      ctx.save();
-      ctx.lineJoin = 'round';
-      ctx.lineCap  = 'round';
-      ctx.miterLimit = 2;
-      // Stroke: 5% of fontPx — at 4K (fontPx~200) = 10px; at 1080p (fontPx~100) = 5px
-      const sw = Math.max(3, fontPx * 0.05);
-      // Multi-pass outline for crisp edges at any resolution
-      ctx.lineWidth = sw * 3;
-      ctx.strokeStyle = 'rgba(0,0,0,1)';
-      ctx.strokeText(txt, cx, y);
-      ctx.lineWidth = sw * 1.5;
-      ctx.strokeStyle = 'rgba(0,0,0,0.9)';
-      ctx.strokeText(txt, cx, y);
-      // Fill on top — solid color, no blur
-      ctx.fillStyle = ch.classList.contains('hl') ? '#FFE600' : '#FFFFFF';
-      ctx.fillText(txt, cx, y);
-      ctx.restore();
-      x+=cw;
-    });
-    ctx.restore();
-  });
-}
-
-function startCanvasLoop() {
-  function loop(){if(!isExporting)return;drawCanvas();exportRafId=setTimeout(loop,1000/30);}
-  loop();
-}
-
-// ══════════════════════════════════════════
-// EXPORT
-// ══════════════════════════════════════════
-document.getElementById('export-btn').addEventListener('click', async () => {
-  if (isExporting) { stopExport(); return; }
-  if (!cues.length || !videoSrc) { alert('Set up video and lyrics first!'); return; }
-
-  // Stop any current playback
-  stopPlayback();
-
-  // Parse FROM / TO
-  const fromStr = (document.getElementById('export-from').value||'').trim();
-  const toStr   = (document.getElementById('export-to').value||'').trim();
-  const fromSec = fromStr ? (mmssToSecs(fromStr)||0) : 0;
-
-  // Create hidden render video
-  const rv = document.createElement('video');
-  rv.src = videoSrc; rv.muted = true; rv.preload = 'auto';
-  rv.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;';
-  document.body.appendChild(rv);
-  renderVideo = rv; // expose globally so getTime() can read it
-
-  await new Promise(res => {
-    if (rv.readyState >= 1) return res();
-    rv.onloadedmetadata = res; setTimeout(res, 5000);
-  });
-
-  const W  = rv.videoWidth  || 1920;
-  const H  = rv.videoHeight || 1080;
-  const dur = rv.duration || 0;
-  const toSec = (toStr && mmssToSecs(toStr)) ? Math.min(mmssToSecs(toStr), dur) : dur;
-
-  if (fromSec >= toSec) {
-    alert('FROM must be before TO.'); document.body.removeChild(rv); return;
-  }
-
-  // 4K supersampled canvas for ultra‑sharp subtitles
-const EXPORT_SCALE = 2;
-recCanvas.width = W * EXPORT_SCALE;
-recCanvas.height = H * EXPORT_SCALE;
-
-  // Supersampled text canvas — renders text at 2x for crisp quality
-  const SS = 2; // supersampling factor
-  const textCanvas = document.createElement('canvas');
-  textCanvas.width  = W * SS;
-  textCanvas.height = H * SS;
-  const textCtx = textCanvas.getContext('2d', {alpha: true});
-  // Make textCanvas accessible to drawSubtitlesOnCanvas
-  window._exportTextCanvas = textCanvas;
-  window._exportSS = SS;
-
-  // MP4 first, webm fallback
-  const mimeType = ['video/mp4;codecs=avc1,mp4a.40.2','video/mp4;codecs=avc1','video/mp4',
-    'video/webm;codecs=vp9','video/webm']
-    .find(t => MediaRecorder.isTypeSupported(t)) || 'video/webm';
-  const ext = mimeType.startsWith('video/mp4') ? 'mp4' : 'webm';
-
-  recordedChunks = [];
-  const stream = recCanvas.captureStream(0); // 0 = manual frame timing
-  try { mediaRecorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 80000000 }); }
-  catch(e) { mediaRecorder = new MediaRecorder(stream, { videoBitsPerSecond: 80000000 }); }
-
-  mediaRecorder.ondataavailable = e => { if (e.data?.size > 0) recordedChunks.push(e.data); };
-  mediaRecorder.onstop = () => {
-    // Reset UI immediately
-    document.getElementById('export-btn').textContent = '⬇ Export Video';
-    document.getElementById('export-btn').classList.remove('exporting');
-    document.getElementById('export-progress').classList.remove('on');
-    document.getElementById('export-progress').textContent = '';
-
-    // Build blob FIRST before any cleanup
-    const blob = recordedChunks.length ? new Blob(recordedChunks, {type:mimeType}) : null;
-
-    // Cleanup (order matters — free heavy stuff after blob is created)
-    window._exportTextCanvas = null;
-    window._exportSS = null;
-    isExporting = false;
-
-    // Restore main video
-    const _bgvRestore = document.getElementById('bg-video');
-    if (_bgvRestore && videoSrc) { _bgvRestore.src = videoSrc; }
-
-    // Show preview immediately
-    if (blob) {
-      showExportPreview(blob, mimeType);
-    }
-
-    // Free memory after preview is shown (async so it doesn't block UI)
-    setTimeout(() => {
-      clearGlyphCache();
-      recordedChunks = [];
-      try { document.body.removeChild(rv); } catch(e) {}
-      renderVideo = null;
-    }, 100);
-  };
-
-  // Seek to start
-  rv.currentTime = fromSec;
-  await new Promise(r => { rv.onseeked = r; setTimeout(r, 3000); });
-
-  isExporting = true;
-  mediaRecorder.start(100);
-
-  document.getElementById('export-btn').textContent = '⏹ Stop & Preview';
-  document.getElementById('export-btn').classList.add('exporting');
-  document.getElementById('export-progress').classList.add('on');
-  document.getElementById('export-progress').textContent = 'Rendering...';
-
-  // Stop visible playback completely — no DOM updates during export
-  hideCue(); clearHL();
-  const bgvMain = document.getElementById('bg-video');
-  if (bgvMain) { bgvMain.pause(); bgvMain.src = ''; } // free main video
-  activeCueIdx = -1; unitIdx = 0;
-  isPlaying = false; // prevent rafLoop/hlTick from running
-
-  // Play hidden render video
-  rv.play();
-  rv.onended = () => { if (isExporting) stopExport(); };
-
-  // Pure JS highlight state — no DOM touching at all
-  function getExportHighlightState(t) {
-    // Find active cue
-    let cueIdx = -1;
-    for (let i = 0; i < cues.length; i++) {
-      const c = cues[i];
-      if (c.startTime === null) continue;
-      const end = c.endTime !== null ? c.endTime : c.startTime + 9999;
-      if (t >= c.startTime && t < end) { cueIdx = i; break; }
-    }
-    if (cueIdx < 0) return { cueIdx: -1, hlSet: new Set() };
-
-    const cue = cues[cueIdx];
-    const elapsed = (t - cue.startTime) * 1000; // ms
-    const mode = document.getElementById('r-mode').value;
-    const globalSpd = mode === 'char'
-      ? parseInt(document.getElementById('r-csp').value)
-      : parseInt(document.getElementById('r-wsp').value);
-
-    const cueUnits = stageUnits.filter(u => u.cueIdx === cueIdx);
-    const hlSet = new Set();
-    let timeAcc = 0;
-    for (let i = 0; i < cueUnits.length; i++) {
-      const u = cueUnits[i];
-      const spd = (cue.lineSpeeds && cue.lineSpeeds[u.lineIdx] != null)
-        ? cue.lineSpeeds[u.lineIdx] : globalSpd;
-      if (timeAcc <= elapsed) hlSet.add(i);
-      timeAcc += spd;
-    }
-    return { cueIdx, hlSet };
-  }
-
-  // Canvas draw using pure JS state — zero DOM reads for highlights
-  function drawFrameForExport(t, ctx, W, H) {
-    const { cueIdx, hlSet } = getExportHighlightState(t);
-    if (cueIdx < 0) return;
-
-    const cue = cues[cueIdx];
-    const fontVw       = parseFloat(document.getElementById('r-font').value) || 5.5;
-    const canvasFontPx = Math.round(fontVw / 100 * W);
-    const lineSpacing  = parseFloat(document.getElementById('r-lspacing').value) || 1.25;
-    const wordSpEm     = parseFloat(document.getElementById('r-wspacing').value) || 0;
-    const wordSpPx     = wordSpEm * canvasFontPx;
-    const mode         = document.getElementById('r-mode').value;
-
-    ctx.save();
-    ctx.font         = `900 ${canvasFontPx}px "Arial Black", Arial, sans-serif`;
-    ctx.textBaseline = 'middle';
-    ctx.lineJoin     = 'round';
-    ctx.lineCap      = 'round';
-
-    const posX   = (cue.posX !== undefined ? cue.posX : 50) / 100;
-    const posY   = (cue.posY !== undefined ? cue.posY : 85) / 100;
-    const lineH  = canvasFontPx * lineSpacing;
-    const totalH = lineH * cue.lines.length;
-    const spaceW = ctx.measureText(' ').width;
-
-    // Get cue units for highlight mapping
-    const cueUnits = stageUnits.filter(u => u.cueIdx === cueIdx);
-
-    cue.lines.forEach((line, li) => {
-      const cy = posY * H - totalH / 2 + lineH * li + lineH / 2;
-      const lineUnitsIdx = cueUnits
-        .map((u, i) => u.lineIdx === li ? i : -1)
-        .filter(i => i >= 0);
-
-      const spW = spaceW + wordSpPx;
-
-      if (mode === 'char') {
-        const chars = line.toUpperCase().split('');
-        let totalW = 0;
-        chars.forEach(ch => { totalW += ch === ' ' ? spW : ctx.measureText(ch).width; });
-        let x = posX * W - totalW / 2;
-        let ui = 0;
-        chars.forEach(ch => {
-          const cw = ch === ' ' ? spW : ctx.measureText(ch).width;
-          if (ch.trim()) {
-            const unitGlobalIdx = lineUnitsIdx[ui];
-            const isHL = hlSet.has(unitGlobalIdx);
-            renderGlyph(ctx, ch, x + cw/2, cy, canvasFontPx, isHL);
-            ui++;
-          }
-          x += cw;
-        });
-      } else {
-        const words = line.toUpperCase().split(/\s+/);
-        let totalW = 0;
-        words.forEach((w, wi) => { totalW += ctx.measureText(w).width + (wi < words.length-1 ? spW : 0); });
-        let x = posX * W - totalW / 2;
-        words.forEach((word, wi) => {
-          const ww = ctx.measureText(word).width;
-          const unitGlobalIdx = lineUnitsIdx[wi];
-          const isHL = hlSet.has(unitGlobalIdx);
-          renderGlyph(ctx, word, x + ww/2, cy, canvasFontPx, isHL);
-          x += ww + (wi < words.length-1 ? spW : 0);
-        });
-      }
-    });
-    ctx.restore();
-  }
-
-  // rAF loop — only draws to canvas, zero DOM interaction
-  function drawLoop() {
-    if (!isExporting) return;
-    const t = rv.currentTime;
-    if (t >= toSec - 0.05) { stopExport(); return; } // small buffer for frame timing
-
-    const ctx = recCanvas.getContext('2d', {alpha:false});
-ctx.setTransform(EXPORT_SCALE,0,0,EXPORT_SCALE,0,0);
-ctx.imageSmoothingEnabled = true;
-ctx.imageSmoothingQuality = 'high';
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(rv, 0, 0, W, H);
-
-    // Draw subtitles purely on canvas — no DOM reads for highlights
-    drawFrameForExport(t, ctx, W, H);
-
-    stream.getVideoTracks()[0].requestFrame && stream.getVideoTracks()[0].requestFrame();
-
-    // Progress (lightweight — only text update)
-    const elapsed = t - fromSec;
-    const total   = toSec - fromSec;
-    const pct = Math.min(100, Math.round(elapsed/total*100));
-    const em = String(Math.floor(elapsed/60)).padStart(2,'0');
-    const es = String(Math.floor(elapsed%60)).padStart(2,'0');
-    const tm = String(Math.floor(total/60)).padStart(2,'0');
-    const ts = String(Math.floor(total%60)).padStart(2,'0');
-    document.getElementById('export-progress').textContent = `${pct}% · ${em}:${es} / ${tm}:${ts}`;
-
-    exportRafId = requestAnimationFrame(drawLoop);
-  }
-  exportRafId = requestAnimationFrame(drawLoop);
-});
-
-
-// Draw subtitles directly on canvas without needing DOM highlight classes
-function drawSubtitlesOnCanvas(ctx, W, H) {
-  if (activeCueIdx < 0 || !cues[activeCueIdx]) return;
-
-  const ov = document.getElementById('video-overlay');
-  const si = document.getElementById('stage-inner');
-  if (!ov || !si) return;
-
-  const ovRect = ov.getBoundingClientRect();
-  if (ovRect.width === 0 || ovRect.height === 0) { drawSubtitlesFallback(ctx, W, H); return; }
-
-  const scaleX = W / ovRect.width;
-  const scaleY = H / ovRect.height;
-
-  const cueDiv = si.querySelector(`.cue-div[data-cue="${activeCueIdx}"]`);
-  if (!cueDiv || cueDiv.style.display === 'none') return;
-
-  // Font size: vw × canvas width — always native resolution
-  const fontVw       = parseFloat(document.getElementById('r-font').value) || 5.5;
-  const canvasFontPx = Math.round(fontVw / 100 * W);
-  const lineSpacing  = parseFloat(document.getElementById('r-lspacing').value) || 1.25;
-  const wordSpEm     = parseFloat(document.getElementById('r-wspacing').value) || 0;
-  const wordSpPx     = wordSpEm * canvasFontPx;
-  const mode         = document.getElementById('r-mode').value;
-  const cue          = cues[activeCueIdx];
-
-  ctx.save();
-  ctx.font         = `900 ${canvasFontPx}px "Arial Black", Arial, sans-serif`;
-  ctx.textBaseline = 'middle';
-  ctx.lineJoin     = 'round';
-  ctx.lineCap      = 'round';
-  ctx.miterLimit   = 2;
-  const strokeW = Math.max(1, canvasFontPx * 0.03);
-
-  // For Y position: read from DOM (accurate line positions)
-  // For X position: compute fresh from canvas font metrics (avoids CSS word-spacing issues)
-  const subLines = Array.from(cueDiv.querySelectorAll('.sl-line'));
-
-  subLines.forEach((lineEl, li) => {
-    // Get Y center of this line from DOM
-    const lineRect = lineEl.getBoundingClientRect();
-    if (lineRect.width === 0) return;
-    const cy = (lineRect.top - ovRect.top + lineRect.height / 2) * scaleY;
-
-    // Get all units for this line
-    const lineUnits = stageUnits.filter(u => u.cueIdx === activeCueIdx && u.lineIdx === li);
-    const line = cue.lines[li];
-    const spaceW = ctx.measureText(' ').width;
-
-    if (mode === 'char') {
-      const chars = line.toUpperCase().split('');
-      let totalW = 0;
-      chars.forEach(ch => { totalW += ch === ' ' ? spaceW + wordSpPx : ctx.measureText(ch).width; });
-      const posX = (cue.posX !== undefined ? cue.posX : 50) / 100;
-      let x = posX * W - totalW / 2;
-      let ui = 0;
-      chars.forEach(ch => {
-        const cw = ch === ' ' ? spaceW + wordSpPx : ctx.measureText(ch).width;
-        if (ch.trim()) {
-          const isHL = lineUnits[ui] && lineUnits[ui].el.classList.contains('hl');
-          const wcx = x + cw / 2;
-          ctx.textAlign = 'center';
-          renderGlyph(ctx, ch, wcx, cy, canvasFontPx, isHL);
-          ui++;
-        }
-        x += cw;
-      });
-    } else {
-      // Word mode
-      const words = line.toUpperCase().split(/\s+/);
-      const spW = spaceW + wordSpPx;
-      let totalW = 0;
-      words.forEach((w, wi) => { totalW += ctx.measureText(w).width + (wi < words.length-1 ? spW : 0); });
-      const posX = (cue.posX !== undefined ? cue.posX : 50) / 100;
-      let x = posX * W - totalW / 2;
-      words.forEach((word, wi) => {
-        const ww = ctx.measureText(word).width;
-        const isHL = lineUnits[wi] && lineUnits[wi].el.classList.contains('hl');
-        const wcx = x + ww / 2;
-        ctx.textAlign = 'center';
-        renderGlyph(ctx, word, wcx, cy, canvasFontPx, isHL);
-        x += ww + (wi < words.length-1 ? spW : 0);
-      });
-    }
-  });
-
-  ctx.restore();
-}
-
-
-function drawChar(ctx, txt, x, y, fontPx, strokeW, isHL) {
-  const cx = x + ctx.measureText(txt).width / 2;
-  ctx.save();
-  ctx.textAlign = 'center';
-  renderGlyph(ctx, txt, cx, y, fontPx, isHL);
-  ctx.restore();
-}
-
-const MIN_RENDER_PX = 1000;
-
-// Glyph cache: key = "text|isHL" → {canvas, width, height}
-// Built once per export, reused every frame — zero lag
-const _glyphCache = new Map();
-let   _glyphCacheFontPx = -1;
-
-function clearGlyphCache() { _glyphCache.clear(); _glyphCacheFontPx = -1; }
-
-function _buildGlyph(txt, isHL) {
-  const key = txt + '|' + (isHL ? '1' : '0');
-  if (_glyphCache.has(key)) return _glyphCache.get(key);
-
-  const renderPx = MIN_RENDER_PX;
-  const padding  = renderPx * 0.5;
-
-  const gc   = document.createElement('canvas');
-  const gctx = gc.getContext('2d');
-  gctx.font  = `900 ${renderPx}px "Arial Black", Arial, sans-serif`;
-  const tw   = gctx.measureText(txt).width;
-
-  gc.width  = Math.ceil(tw + padding * 2);
-  gc.height = Math.ceil(renderPx * 1.4);
-
-  gctx.font         = `900 ${renderPx}px "Arial Black", Arial, sans-serif`;
-  gctx.textAlign    = 'center';
-  gctx.textBaseline = 'middle';
-  gctx.lineJoin     = 'round';
-  gctx.lineCap      = 'round';
-  gctx.miterLimit   = 2;
-
-  const gcx = gc.width / 2;
-  const gcy = gc.height / 2;
-
-  gctx.lineWidth   = renderPx * 0.08;
-  gctx.strokeStyle = 'rgba(0,0,0,0.95)';
-  gctx.strokeText(txt, gcx, gcy);
-  gctx.lineWidth   = renderPx * 0.04;
-  gctx.strokeStyle = 'rgba(0,0,0,0.7)';
-  gctx.strokeText(txt, gcx, gcy);
-  gctx.fillStyle   = isHL ? '#FFE600' : '#FFFFFF';
-  gctx.fillText(txt, gcx, gcy);
-
-  const entry = { canvas: gc, tw };
-  _glyphCache.set(key, entry);
-  return entry;
-}
-
-function renderGlyph(ctx, txt, cx, cy, fontPx, isHL) {
-  const scale  = fontPx / MIN_RENDER_PX;
-  const entry  = _buildGlyph(txt, isHL);
-  const gc     = entry.canvas;
-  const dw     = gc.width  * scale;
-  const dh     = gc.height * scale;
-
-  ctx.save();
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(gc, cx - dw / 2, cy - dh / 2, dw, dh);
-  ctx.restore();
-}
-
-function _drawGlyphDirect(ctx, txt, cx, cy, fontPx, isHL) {
-  // kept for compatibility — now routes through cache
-  renderGlyph(ctx, txt, cx, cy, fontPx, isHL);
-}
-
-
-function updateHighlightsForTime(t) {
-  // Find active cue
   let wantCue = -1;
-  for (let i = 0; i < cues.length; i++) {
+  for (let i=0; i<cues.length; i++) {
     const c = cues[i];
     if (c.startTime === null) continue;
     const end = c.endTime !== null ? c.endTime : c.startTime + 9999;
     if (t >= c.startTime && t < end) { wantCue = i; break; }
   }
-
   if (wantCue !== activeCueIdx) {
     clearHL();
     clearTimeout(hlTimerId);
-    if (wantCue === -1) {
-      hideCue();
-      unitIdx = 0;
-      return;
-    }
-    showCue(wantCue); // positions THEN shows — no flash
+    if (wantCue === -1) { hideCue(); }
+    else { showCueEl(wantCue); unitIdx = stageUnits.findIndex(u => u.cueIdx === wantCue); if (unitIdx<0) unitIdx=0; hlNextAt = performance.now(); scheduleHl(); }
   }
-  if (wantCue === -1) return;
+  rafId = requestAnimationFrame(rafLoop);
+}
 
-  activeCueIdx = wantCue;
-  const cue = cues[wantCue];
-  const cueStart = cue.startTime;
-  const elapsed  = t - cueStart;
+// ══════════════════════════════════════════
+// HIGHLIGHT TICKER — drift-compensating setTimeout
+// ══════════════════════════════════════════
+function scheduleHl() {
+  if (!isPlaying) return;
+  const delay = Math.max(0, hlNextAt - performance.now());
+  hlTimerId = setTimeout(hlTick, delay);
+}
 
-  // Figure out how many units should be highlighted by now
+function hlTick() {
+  if (!isPlaying) return;
+  if (unitIdx >= stageUnits.length) return;
+  const u = stageUnits[unitIdx];
+  if (u.cueIdx !== activeCueIdx) return;
+  u.el.classList.add('hl');
+  unitIdx++;
   const mode = document.getElementById('r-mode').value;
-  const globalSpd = mode === 'char'
-    ? parseInt(document.getElementById('r-csp').value)
-    : parseInt(document.getElementById('r-wsp').value);
-
-  // Get all units for this cue
-  const cueUnits = stageUnits.filter(u => u.cueIdx === wantCue);
-  if (!cueUnits.length) return;
-
-  // Clear and re-highlight based on elapsed time
-  cueUnits.forEach(u => u.el.classList.remove('hl'));
-
-  let timeAcc = 0;
-  for (let i = 0; i < cueUnits.length; i++) {
-    const u = cueUnits[i];
-    const spd = (cue.lineSpeeds && cue.lineSpeeds[u.lineIdx] != null)
-      ? cue.lineSpeeds[u.lineIdx]
-      : globalSpd;
-    if (timeAcc <= elapsed * 1000) {
-      u.el.classList.add('hl');
-    }
-    timeAcc += spd;
-  }
+  const globalSpd = mode==='char' ? parseInt(document.getElementById('r-csp').value) : parseInt(document.getElementById('r-wsp').value);
+  const cue = cues[u.cueIdx];
+  const lineSpd = (cue && cue.lineSpeeds && cue.lineSpeeds[u.lineIdx] != null) ? cue.lineSpeeds[u.lineIdx] : globalSpd;
+  hlNextAt += lineSpd;
+  scheduleHl();
 }
 
-function stopExport() {
-  if (!isExporting && (!mediaRecorder || mediaRecorder.state === 'inactive')) return;
-  isExporting = false;
-  isPlaying   = false;
-  exportRafId = cancelAnimationFrame(exportRafId);
+// ══════════════════════════════════════════
+// PLAYBACK
+// ══════════════════════════════════════════
+document.getElementById('r-play').addEventListener('click', startPlayback);
+document.getElementById('r-stop').addEventListener('click', stopPlayback);
+
+function startPlayback() {
+  if (!audioSrc || !cues.length) { alert('Set up audio and lyrics first!'); return; }
+  stopPlayback();
+  buildStage();
+  audioEl = document.getElementById('audio-rec');
+  audioEl.src = audioSrc;
+  audioEl.currentTime = audioEl.currentTime || 0;
+  audioEl.play().then(() => { audioStartedAt = performance.now(); audioStartOffset = audioEl.currentTime; }).catch(()=>{});
+  audioEl.onended = () => { isPlaying = false; if (!isRecording) stopPlayback(); };
+  // Hide everything FIRST before any state changes to prevent flash
+  hideCue(); clearHL();
+  activeCueIdx = -1; unitIdx = 0; isPlaying = false;
+  // Small delay so DOM settles (hides last cue) before RAF starts
+  setTimeout(() => {
+    isPlaying = true;
+    hlNextAt = performance.now();
+    rafId = requestAnimationFrame(rafLoop);
+  }, 80);
+}
+
+function stopPlayback() {
+  isPlaying = false;
   cancelAnimationFrame(rafId);
-  clearInterval(exportTimerInterval);
   clearTimeout(hlTimerId);
-  exportRafId = null;
+  if (audioEl) { audioEl.pause(); }
+  hideCue(); clearHL();
+  updateSeekBar();
+}
 
-  // Immediately pause + remove hidden render video
-  document.querySelectorAll('video[style*="-9999px"]').forEach(v => {
-    try { v.pause(); v.src = ''; document.body.removeChild(v); } catch(e) {}
+// ══════════════════════════════════════════
+// PLAYBACK CONTROLS
+// ══════════════════════════════════════════
+document.getElementById('r-prev') && document.getElementById('r-prev').addEventListener('click', () => jumpToCue(Math.max(0, activeCueIdx-1)));
+document.getElementById('r-next') && document.getElementById('r-next').addEventListener('click', () => jumpToCue(Math.min(cues.length-1, activeCueIdx+1)));
+
+function jumpToCue(idx) {
+  isPlaying = false; cancelAnimationFrame(rafId); clearTimeout(hlTimerId);
+  clearHL();
+  unitIdx = stageUnits.findIndex(u => u.cueIdx === idx);
+  if (unitIdx < 0) unitIdx = 0;
+  showCueEl(idx); updateSeekBar();
+}
+
+// ══════════════════════════════════════════
+// CANVAS DRAWING
+// ══════════════════════════════════════════
+const recCanvas = document.getElementById('rec-canvas');
+
+function drawCanvas() {
+  if (!isRecording) return;
+  const ctx = recCanvas.getContext('2d');
+  const W = recCanvas.width, H = recCanvas.height;
+
+  ctx.fillStyle = '#00FF00';
+  ctx.fillRect(0, 0, W, H);
+
+  if (activeCueIdx < 0) return;
+
+  const cueDiv = stageInner.querySelector('.cue-div[data-cue="' + activeCueIdx + '"]');
+  if (!cueDiv || !cueDiv.classList.contains('on')) return;
+
+  const fontPx = Math.round(parseFloat(document.getElementById('r-font').value) / 100 * W);
+  // Use strokeText for crisp outline at any resolution — no pixelation
+  ctx.font = '900 ' + fontPx + 'px "Arial Black", Arial, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round';
+
+  const lines = Array.from(cueDiv.querySelectorAll('.sl-line'));
+  const lineH = fontPx * 1.3;
+  const totalH = lineH * lines.length;
+
+  lines.forEach((line, li) => {
+    const y = H/2 - totalH/2 + lineH*li + lineH/2;
+    const chars = Array.from(line.querySelectorAll('.ch'));
+    const fullText = chars.map(c => c.textContent.toUpperCase()).join('');
+    const tw = ctx.measureText(fullText).width;
+    const scale = tw > W*0.90 ? (W*0.90)/tw : 1;
+
+    ctx.save();
+    if (scale < 1) { ctx.translate(W/2,y); ctx.scale(scale,scale); ctx.translate(-W/2,-y); }
+
+    let x = W/2 - tw/2;
+    chars.forEach(ch => {
+      const txt = ch.textContent.toUpperCase();
+      const cw  = ctx.measureText(txt).width;
+      const cx  = x + cw/2;
+      const isHL = ch.classList.contains('hl');
+
+      // strokeText gives perfect vector-quality outline at any scale
+      ctx.lineWidth = Math.max(6, Math.round(fontPx * 0.12));
+      ctx.strokeStyle = '#000000';
+      ctx.strokeText(txt, cx, y);
+
+      // Fill
+      ctx.fillStyle = isHL ? '#FFE600' : '#FFFFFF';
+      ctx.fillText(txt, cx, y);
+
+      x += cw;
+    });
+    ctx.restore();
   });
-  renderVideo = null;
+}
 
-  // Stop recorder — this triggers onstop immediately (no delay)
-  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-    try { mediaRecorder.requestData(); } catch(e) {}
-    try { mediaRecorder.stop(); } catch(e) {}
+// ══════════════════════════════════════════
+// RECORD
+// ══════════════════════════════════════════
+document.getElementById('r-record').addEventListener('click', async () => {
+  if (isRecording) { stopRecording(); return; }
+  if (!cues.length) { alert('Load lyrics first!'); return; }
+
+  // Use tab screen capture — records exactly what you see, no canvas lag
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getDisplayMedia({
+      video: { frameRate: 30, displaySurface: 'browser' },
+      audio: false,
+      preferCurrentTab: true
+    });
+  } catch(e) {
+    alert('Please allow screen sharing when prompted.\nTip: Select THIS TAB in the Chrome dialog.');
+    return;
   }
-}
 
-// ══════════════════════════════════════════
-// EXPORT PREVIEW MODAL
-// ══════════════════════════════════════════
-let exportBlobUrl = null;
-let exportBlob    = null;
-let exportMime    = null;
+  const mimeType = [
+    'video/mp4;codecs=avc1', 'video/mp4',
+    'video/webm;codecs=vp9', 'video/webm'
+  ].find(t => MediaRecorder.isTypeSupported(t)) || 'video/webm';
+  const fileExt = mimeType.includes('mp4') ? 'mp4' : 'webm';
 
-function showExportPreview(blob, mimeType) {
-  // Release old URL if any
-  if (exportBlobUrl) URL.revokeObjectURL(exportBlobUrl);
-  exportBlob    = blob;
-  exportMime    = mimeType;
-  exportBlobUrl = URL.createObjectURL(blob);
+  recordedChunks = [];
+  try {
+    mediaRecorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 20000000 });
+  } catch(e) {
+    mediaRecorder = new MediaRecorder(stream);
+  }
 
-  // Load into preview video
-  const pv = document.getElementById('export-preview-video');
-  pv.src = exportBlobUrl;
-  pv.load();
+  mediaRecorder.ondataavailable = e => {
+    if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+  };
 
-  // Show modal
-  const modal = document.getElementById('export-modal');
-  modal.style.display = 'flex';
-}
+  mediaRecorder.onstop = () => {
+    clearInterval(recTimerInterval);
+    isRecording = false;
+    stream.getTracks().forEach(t => t.stop());
+    document.getElementById('r-record').textContent = '⏺ Record';
+    document.getElementById('r-record').classList.remove('rec');
+    document.getElementById('rec-timer').classList.remove('on');
+    if (!recordedChunks.length) { alert('Nothing recorded.'); return; }
+    const blob = new Blob(recordedChunks, { type: mimeType });
+    showPreviewModal(blob, fileExt);
+  };
 
-// Global modal functions called via inline onclick
-function modalSave() {
-  if (!exportBlobUrl) return;
-  const ext = exportMime && exportMime.startsWith('video/mp4') ? 'mp4' : 'webm';
-  const a = document.createElement('a');
-  a.href = exportBlobUrl;
-  a.download = 'subtitled-video.' + ext;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => closeExportModal(), 300);
-}
+  // If user stops sharing via Chrome's "Stop sharing" button
+  stream.getVideoTracks()[0].addEventListener('ended', () => {
+    if (isRecording) stopRecording();
+  });
 
-function modalDiscard() {
-  closeExportModal();
-}
+  isRecording = true;
+  mediaRecorder.start(100);
+  startPlayback();
 
-// Click outside modal to close — wrapped in null check since modal is after script tag
-window.addEventListener('click', e => {
-  if (e.target && e.target.id === 'export-modal') closeExportModal();
+  document.getElementById('r-record').textContent = '⏹ Stop & Save';
+  document.getElementById('r-record').classList.add('rec');
+  const rt = document.getElementById('rec-timer');
+  rt.classList.add('on'); rt.textContent = '00:00';
+  const t0 = Date.now();
+  recTimerInterval = setInterval(() => {
+    const s = Math.floor((Date.now() - t0) / 1000);
+    rt.textContent = String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
+  }, 1000);
 });
 
-function closeExportModal() {
-  const modal = document.getElementById('export-modal');
-  modal.style.display = 'none';
-  const pv = document.getElementById('export-preview-video');
-  if (pv) { pv.pause(); pv.src = ''; pv.load(); }
-  if (exportBlobUrl) { URL.revokeObjectURL(exportBlobUrl); exportBlobUrl = null; }
-  exportBlob = null; exportMime = null;
+// ── PREVIEW MODAL before saving ──
+function showPreviewModal(blob, fileExt) {
+  const url = URL.createObjectURL(blob);
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:20px;';
+
+  // Title
+  const title = document.createElement('div');
+  title.style.cssText = 'color:#fff;font-size:1rem;font-weight:700;letter-spacing:1px;';
+  title.textContent = '🎬 Preview Recording — looks good? Save it!';
+  overlay.appendChild(title);
+
+  // Video with native controls (play/pause/seek/fullscreen all built in)
+  const video = document.createElement('video');
+  video.src = url;
+  video.controls = true;
+  video.autoplay = true;
+  video.style.cssText = 'max-width:88vw;max-height:58vh;border-radius:8px;border:2px solid #e94560;background:#000;outline:none;';
+  // Ensure seek works
+  video.preload = 'auto';
+  overlay.appendChild(video);
+
+  // Custom seek hint
+  const seekHint = document.createElement('div');
+  seekHint.style.cssText = 'color:#555;font-size:0.72rem;';
+  seekHint.textContent = 'Use the video controls to play, pause, seek, rewind, and go fullscreen';
+  overlay.appendChild(seekHint);
+
+  // Info
+  const info = document.createElement('div');
+  info.style.cssText = 'color:#888;font-size:0.8rem;';
+  info.textContent = 'Size: ' + (blob.size/1024/1024).toFixed(1) + ' MB  •  Format: ' + fileExt.toUpperCase() + '  •  Duration: ' + new Date(0).toISOString().substr(11,8);
+  video.addEventListener('loadedmetadata', () => {
+    const d = Math.floor(video.duration);
+    info.textContent = 'Size: ' + (blob.size/1024/1024).toFixed(1) + ' MB  •  Format: ' + fileExt.toUpperCase() + '  •  Duration: ' + Math.floor(d/60) + ':' + String(d%60).padStart(2,'0');
+  });
+  overlay.appendChild(info);
+
+  // Buttons
+  const btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex;gap:12px;margin-top:4px;';
+
+  const saveBtn = document.createElement('button');
+  saveBtn.textContent = '💾 Save File';
+  saveBtn.style.cssText = 'background:#2ecc71;color:#fff;border:none;border-radius:6px;padding:10px 32px;font-size:0.95rem;font-weight:700;cursor:pointer;';
+  saveBtn.addEventListener('click', () => {
+    const a = document.createElement('a');
+    a.href = url; a.download = 'green-screen-lyrics.' + fileExt;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    document.body.removeChild(overlay);
+  });
+
+  const discardBtn = document.createElement('button');
+  discardBtn.textContent = '🗑 Discard & Re-record';
+  discardBtn.style.cssText = 'background:#c0392b;color:#fff;border:none;border-radius:6px;padding:10px 22px;font-size:0.95rem;font-weight:700;cursor:pointer;';
+  discardBtn.addEventListener('click', () => {
+    video.pause(); URL.revokeObjectURL(url);
+    document.body.removeChild(overlay);
+  });
+
+  btnRow.appendChild(saveBtn);
+  btnRow.appendChild(discardBtn);
+  overlay.appendChild(btnRow);
+  document.body.appendChild(overlay);
+}
+
+
+function stopRecording() {
+  clearInterval(recCanvasInterval); recCanvasInterval = null;
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+  stopPlayback();
 }
 
 // init
