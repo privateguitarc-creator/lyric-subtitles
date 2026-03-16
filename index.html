@@ -591,9 +591,10 @@ function positionSubtitle(cIdx) {
     if (Math.abs(y-50) < SNAP_THRESHOLD) y = 50;
   }
 
-  // position within overlay (which = video area)
-  si.style.left = Math.max(0, Math.min(ovW-siW, (x/100)*ovW - siW/2)) + 'px';
-  si.style.top  = Math.max(0, Math.min(ovH-siH, (y/100)*ovH - siH/2)) + 'px';
+  // Use transform to center exactly on the % point — no size measurement needed
+  si.style.left      = (x / 100 * ovW) + 'px';
+  si.style.top       = (y / 100 * ovH) + 'px';
+  si.style.transform = 'translate(-50%, -50%)';
 
   // guides
   const nearH = isDragging && Math.abs(x-50) < SNAP_THRESHOLD+5;
@@ -714,15 +715,14 @@ function showCue(idx) {
     if (si && ov) {
       const ovW = ov.offsetWidth  || 1;
       const ovH = ov.offsetHeight || 1;
-      const siW = si.offsetWidth  || 0;
-      const siH = si.offsetHeight || 0;
-      si.style.left = Math.max(0, Math.min(ovW-siW, (subX/100)*ovW - siW/2)) + 'px';
-      si.style.top  = Math.max(0, Math.min(ovH-siH, (subY/100)*ovH - siH/2)) + 'px';
+      // Use CSS transform to center so we don't need to know siW/siH
+      // position is % of overlay, transform centers it on that point
+      si.style.left      = (subX / 100 * ovW) + 'px';
+      si.style.top       = (subY / 100 * ovH) + 'px';
+      si.style.transform = 'translate(-50%, -50%)';
     }
   }
-  // Step 2: Restore visibility and show cue — position already set
-  const _si = document.getElementById('stage-inner');
-  if (_si) _si.style.visibility = 'visible';
+  // Step 2: Show the cue div — position already set above
   document.querySelectorAll('.cue-div').forEach((el,i)=>{
     el.classList.toggle('on', i===idx);
     el.style.display = i===idx ? 'block' : 'none';
@@ -1120,7 +1120,9 @@ function jumpToCue(ci) {
   if(!cues[ci]||cues[ci].startTime===null) return;
   const bgv=document.getElementById('bg-video');
   if(bgv){bgv.currentTime=cues[ci].startTime;audioStartedAt=performance.now();audioStartOffset=cues[ci].startTime;}
-  clearHL(); hideCue(); activeCueIdx=-1;
+  clearHL();
+  // Show cue directly — no hideCue() to prevent position flash
+  showCue(ci);
   unitIdx=stageUnits.findIndex(u=>u.cueIdx===ci); if(unitIdx<0) unitIdx=0;
   if(!isPlaying){
     bgv.play().catch(()=>{}); isPlaying=true; hlNextAt=performance.now();
