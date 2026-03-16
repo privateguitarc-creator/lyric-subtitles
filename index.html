@@ -632,13 +632,9 @@ document.addEventListener('mouseup', () => {
   // snap if close
   if(Math.abs(subX-50)<SNAP_THRESHOLD) subX=50;
   if(Math.abs(subY-50)<SNAP_THRESHOLD) subY=50;
-  // subX/subY are already % of video-overlay = video area — save directly
-  if (activeCueIdx >= 0 && cues[activeCueIdx]) {
-    cues[activeCueIdx].posX = subX;
-    cues[activeCueIdx].posY = subY;
-  } else {
-    cues.forEach(c => { c.posX=subX; c.posY=subY; });
-  }
+  // Save position to ALL cues so subtitle stays in same place across all lines
+  // (unless user has explicitly set per-cue positions, which is an advanced use case)
+  cues.forEach(c => { c.posX = subX; c.posY = subY; });
   positionSubtitle();
 });
 
@@ -663,13 +659,14 @@ document.addEventListener('touchend', ()=>{
   document.getElementById('guide-center-dot').style.display='none';
   if(Math.abs(subX-50)<SNAP_THRESHOLD) subX=50;
   if(Math.abs(subY-50)<SNAP_THRESHOLD) subY=50;
-  if(activeCueIdx>=0&&cues[activeCueIdx]){cues[activeCueIdx].posX=subX;cues[activeCueIdx].posY=subY;}
-  else cues.forEach(c=>{c.posX=subX;c.posY=subY;});
+  cues.forEach(c=>{c.posX=subX;c.posY=subY;});
   positionSubtitle();
 });
 
 document.getElementById('r-reset-pos').addEventListener('click', ()=>{
-  subX=50; subY=85; positionSubtitle();
+  subX=50; subY=85;
+  cues.forEach(c=>{c.posX=50;c.posY=85;});
+  positionSubtitle();
 });
 
 // ══════════════════════════════════════════
