@@ -215,6 +215,35 @@ canvas { display:none; }
 
 <canvas id="rec-canvas"></canvas>
 
+<!-- Export Preview Modal -->
+<div id="export-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;width:100vw;height:100vh;background:rgba(0,0,0,0.92);z-index:99999;align-items:center;justify-content:center;flex-direction:column;pointer-events:all;user-select:auto;isolation:isolate;">
+  <div style="background:#16213e;border:2px solid #e94560;border-radius:12px;max-width:90vw;width:900px;max-height:95vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 0 40px rgba(233,69,96,0.3);pointer-events:all;user-select:text;">
+
+    <!-- Header -->
+    <div style="padding:14px 20px;border-bottom:1px solid #0f3460;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+      <div>
+        <div style="font-size:1.1rem;font-weight:700;color:#fff;">🎬 Export Preview</div>
+        <div style="font-size:0.75rem;color:#888;margin-top:2px;">Review your exported video before saving</div>
+      </div>
+      <button onclick="modalDiscard()" style="background:#0f3460;border:1px solid #444;color:#888;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:0.8rem;pointer-events:all;position:relative;z-index:10001;">✕ Close</button>
+    </div>
+
+    <!-- Video Preview -->
+    <div style="flex:1;overflow:hidden;background:#000;display:flex;align-items:center;justify-content:center;min-height:0;padding:12px;">
+      <video id="export-preview-video" controls style="max-width:100%;max-height:60vh;border-radius:8px;display:block;"></video>
+    </div>
+
+    <!-- Action Buttons -->
+    <div style="padding:16px 20px;border-top:1px solid #0f3460;display:flex;gap:10px;align-items:center;justify-content:center;flex-shrink:0;flex-wrap:wrap;">
+      <button onclick="modalSave()" style="background:linear-gradient(135deg,#1a7a4a,#27ae60);border:1px solid #2ecc71;color:#fff;border-radius:7px;padding:10px 28px;font-size:0.95rem;font-weight:700;cursor:pointer;pointer-events:all;position:relative;z-index:10001;">⬇ Save / Download</button>
+      <button onclick="modalDiscard()" style="background:#3a0f0f;border:1px solid #e94560;color:#e94560;border-radius:7px;padding:10px 28px;font-size:0.95rem;font-weight:700;cursor:pointer;pointer-events:all;position:relative;z-index:10001;">✕ Discard &amp; Edit Again</button>
+    </div>
+
+  </div>
+</div>
+
+
+
 <script>
 // ══════════════════════════════════════════
 // STATE
@@ -1280,6 +1309,9 @@ document.getElementById('export-btn').addEventListener('click', async () => {
     window._exportTextCanvas = null;
     window._exportSS = null;
     clearGlyphCache(); // free memory after export
+    // Restore main video so preview works again
+    const _bgvRestore = document.getElementById('bg-video');
+    if (_bgvRestore && videoSrc) { _bgvRestore.src = videoSrc; }
     document.getElementById('export-btn').textContent = '⬇ Export Video';
     document.getElementById('export-btn').classList.remove('exporting');
     document.getElementById('export-progress').classList.remove('on');
@@ -1300,52 +1332,135 @@ document.getElementById('export-btn').addEventListener('click', async () => {
   document.getElementById('export-progress').classList.add('on');
   document.getElementById('export-progress').textContent = 'Rendering...';
 
-  // Kick off subtitle engine for time t
-  hideCue(); clearHL(); activeCueIdx = -1; unitIdx = 0;
-  audioStartedAt = performance.now() - fromSec * 1000;
-  audioStartOffset = fromSec;
-  isPlaying = true;
-  hlNextAt = performance.now();
-  rafId = requestAnimationFrame(rafLoop);
+  // Stop visible playback completely — no DOM updates during export
+  hideCue(); clearHL();
+  const bgvMain = document.getElementById('bg-video');
+  if (bgvMain) { bgvMain.pause(); bgvMain.src = ''; } // free main video
+  activeCueIdx = -1; unitIdx = 0;
+  isPlaying = false; // prevent rafLoop/hlTick from running
 
-  // Play hidden video
+  // Play hidden render video
   rv.play();
   rv.onended = () => { if (isExporting) stopExport(); };
 
-  // rAF loop: draw every frame as fast as browser delivers them
+  // Pure JS highlight state — no DOM touching at all
+  function getExportHighlightState(t) {
+    // Find active cue
+    let cueIdx = -1;
+    for (let i = 0; i < cues.length; i++) {
+      const c = cues[i];
+      if (c.startTime === null) continue;
+      const end = c.endTime !== null ? c.endTime : c.startTime + 9999;
+      if (t >= c.startTime && t < end) { cueIdx = i; break; }
+    }
+    if (cueIdx < 0) return { cueIdx: -1, hlSet: new Set() };
+
+    const cue = cues[cueIdx];
+    const elapsed = (t - cue.startTime) * 1000; // ms
+    const mode = document.getElementById('r-mode').value;
+    const globalSpd = mode === 'char'
+      ? parseInt(document.getElementById('r-csp').value)
+      : parseInt(document.getElementById('r-wsp').value);
+
+    const cueUnits = stageUnits.filter(u => u.cueIdx === cueIdx);
+    const hlSet = new Set();
+    let timeAcc = 0;
+    for (let i = 0; i < cueUnits.length; i++) {
+      const u = cueUnits[i];
+      const spd = (cue.lineSpeeds && cue.lineSpeeds[u.lineIdx] != null)
+        ? cue.lineSpeeds[u.lineIdx] : globalSpd;
+      if (timeAcc <= elapsed) hlSet.add(i);
+      timeAcc += spd;
+    }
+    return { cueIdx, hlSet };
+  }
+
+  // Canvas draw using pure JS state — zero DOM reads for highlights
+  function drawFrameForExport(t, ctx, W, H) {
+    const { cueIdx, hlSet } = getExportHighlightState(t);
+    if (cueIdx < 0) return;
+
+    const cue = cues[cueIdx];
+    const fontVw       = parseFloat(document.getElementById('r-font').value) || 5.5;
+    const canvasFontPx = Math.round(fontVw / 100 * W);
+    const lineSpacing  = parseFloat(document.getElementById('r-lspacing').value) || 1.25;
+    const wordSpEm     = parseFloat(document.getElementById('r-wspacing').value) || 0;
+    const wordSpPx     = wordSpEm * canvasFontPx;
+    const mode         = document.getElementById('r-mode').value;
+
+    ctx.save();
+    ctx.font         = `900 ${canvasFontPx}px "Arial Black", Arial, sans-serif`;
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin     = 'round';
+    ctx.lineCap      = 'round';
+
+    const posX   = (cue.posX !== undefined ? cue.posX : 50) / 100;
+    const posY   = (cue.posY !== undefined ? cue.posY : 85) / 100;
+    const lineH  = canvasFontPx * lineSpacing;
+    const totalH = lineH * cue.lines.length;
+    const spaceW = ctx.measureText(' ').width;
+
+    // Get cue units for highlight mapping
+    const cueUnits = stageUnits.filter(u => u.cueIdx === cueIdx);
+
+    cue.lines.forEach((line, li) => {
+      const cy = posY * H - totalH / 2 + lineH * li + lineH / 2;
+      const lineUnitsIdx = cueUnits
+        .map((u, i) => u.lineIdx === li ? i : -1)
+        .filter(i => i >= 0);
+
+      const spW = spaceW + wordSpPx;
+
+      if (mode === 'char') {
+        const chars = line.toUpperCase().split('');
+        let totalW = 0;
+        chars.forEach(ch => { totalW += ch === ' ' ? spW : ctx.measureText(ch).width; });
+        let x = posX * W - totalW / 2;
+        let ui = 0;
+        chars.forEach(ch => {
+          const cw = ch === ' ' ? spW : ctx.measureText(ch).width;
+          if (ch.trim()) {
+            const unitGlobalIdx = lineUnitsIdx[ui];
+            const isHL = hlSet.has(unitGlobalIdx);
+            renderGlyph(ctx, ch, x + cw/2, cy, canvasFontPx, isHL);
+            ui++;
+          }
+          x += cw;
+        });
+      } else {
+        const words = line.toUpperCase().split(/\s+/);
+        let totalW = 0;
+        words.forEach((w, wi) => { totalW += ctx.measureText(w).width + (wi < words.length-1 ? spW : 0); });
+        let x = posX * W - totalW / 2;
+        words.forEach((word, wi) => {
+          const ww = ctx.measureText(word).width;
+          const unitGlobalIdx = lineUnitsIdx[wi];
+          const isHL = hlSet.has(unitGlobalIdx);
+          renderGlyph(ctx, word, x + ww/2, cy, canvasFontPx, isHL);
+          x += ww + (wi < words.length-1 ? spW : 0);
+        });
+      }
+    });
+    ctx.restore();
+  }
+
+  // rAF loop — only draws to canvas, zero DOM interaction
   function drawLoop() {
     if (!isExporting) return;
     const t = rv.currentTime;
-
-    // Stop at TO time
     if (t >= toSec) { stopExport(); return; }
 
-    const ctx = recCanvas.getContext('2d', {alpha:false, desynchronized:true});
+    const ctx = recCanvas.getContext('2d', {alpha:false});
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(rv, 0, 0, W, H);
 
-    // Draw subtitles using supersampled canvas for crisp text
-    if (activeCueIdx >= 0) {
-      const SS = window._exportSS || 1;
-      const tc = window._exportTextCanvas;
-      if (tc && SS > 1) {
-        const tctx = tc.getContext('2d', {alpha: true});
-        tctx.clearRect(0, 0, tc.width, tc.height);
-        drawSubtitlesOnCanvas(tctx, tc.width, tc.height);
-        // Scale down onto main canvas — supersampling produces sharp text
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
-        ctx.drawImage(tc, 0, 0, tc.width, tc.height, 0, 0, W, H);
-      } else {
-        drawSubtitlesOnCanvas(ctx, W, H);
-      }
-    }
+    // Draw subtitles purely on canvas — no DOM reads for highlights
+    drawFrameForExport(t, ctx, W, H);
 
-    // Manually signal a new frame to the stream
     stream.getVideoTracks()[0].requestFrame && stream.getVideoTracks()[0].requestFrame();
 
-    // Progress
+    // Progress (lightweight — only text update)
     const elapsed = t - fromSec;
     const total   = toSec - fromSec;
     const pct = Math.min(100, Math.round(elapsed/total*100));
@@ -1638,9 +1753,9 @@ function modalDiscard() {
   closeExportModal();
 }
 
-// Click outside modal to close
-document.getElementById('export-modal').addEventListener('click', e => {
-  if (e.target === document.getElementById('export-modal')) closeExportModal();
+// Click outside modal to close — wrapped in null check since modal is after script tag
+window.addEventListener('click', e => {
+  if (e.target && e.target.id === 'export-modal') closeExportModal();
 });
 
 function closeExportModal() {
@@ -1655,32 +1770,5 @@ function closeExportModal() {
 // init
 goTab('setup');
 </script>
-<!-- Export Preview Modal -->
-<div id="export-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;width:100vw;height:100vh;background:rgba(0,0,0,0.92);z-index:99999;align-items:center;justify-content:center;flex-direction:column;pointer-events:all;user-select:auto;isolation:isolate;">
-  <div style="background:#16213e;border:2px solid #e94560;border-radius:12px;max-width:90vw;width:900px;max-height:95vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 0 40px rgba(233,69,96,0.3);pointer-events:all;user-select:text;">
-
-    <!-- Header -->
-    <div style="padding:14px 20px;border-bottom:1px solid #0f3460;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-      <div>
-        <div style="font-size:1.1rem;font-weight:700;color:#fff;">🎬 Export Preview</div>
-        <div style="font-size:0.75rem;color:#888;margin-top:2px;">Review your exported video before saving</div>
-      </div>
-      <button onclick="modalDiscard()" style="background:#0f3460;border:1px solid #444;color:#888;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:0.8rem;pointer-events:all;position:relative;z-index:10001;">✕ Close</button>
-    </div>
-
-    <!-- Video Preview -->
-    <div style="flex:1;overflow:hidden;background:#000;display:flex;align-items:center;justify-content:center;min-height:0;padding:12px;">
-      <video id="export-preview-video" controls style="max-width:100%;max-height:60vh;border-radius:8px;display:block;"></video>
-    </div>
-
-    <!-- Action Buttons -->
-    <div style="padding:16px 20px;border-top:1px solid #0f3460;display:flex;gap:10px;align-items:center;justify-content:center;flex-shrink:0;flex-wrap:wrap;">
-      <button onclick="modalSave()" style="background:linear-gradient(135deg,#1a7a4a,#27ae60);border:1px solid #2ecc71;color:#fff;border-radius:7px;padding:10px 28px;font-size:0.95rem;font-weight:700;cursor:pointer;pointer-events:all;position:relative;z-index:10001;">⬇ Save / Download</button>
-      <button onclick="modalDiscard()" style="background:#3a0f0f;border:1px solid #e94560;color:#e94560;border-radius:7px;padding:10px 28px;font-size:0.95rem;font-weight:700;cursor:pointer;pointer-events:all;position:relative;z-index:10001;">✕ Discard &amp; Edit Again</button>
-    </div>
-
-  </div>
-</div>
-
 </body>
 </html>
