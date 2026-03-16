@@ -89,7 +89,7 @@ button.grn:hover:not(:disabled) { background:#145e38; }
 .cue-div { display:none; }
 .cue-div.on { display:block; }
 .sl-line { display:block; white-space:nowrap; }
-.ch { display:inline; font-family:'Arial Black',Arial,sans-serif; font-weight:900; text-transform:uppercase; color:#fff; -webkit-text-stroke: 2px #000; paint-order: stroke fill; transition:color 0.04s; }
+.ch { display:inline; font-family:'Arial Black',Arial,sans-serif; font-weight:900; text-transform:uppercase; color:#fff; text-shadow:1px 1px 0 #000,-1px 1px 0 #000,1px -1px 0 #000,-1px -1px 0 #000,0 2px 4px rgba(0,0,0,0.8); transition:color 0.04s; }
 .ch.hl { color:#FFE600; }
 .ch.sp { display:inline; -webkit-text-stroke:0; }
 
@@ -1247,16 +1247,6 @@ document.getElementById('export-btn').addEventListener('click', async () => {
 
   recCanvas.width = W; recCanvas.height = H;
 
-  // Supersampled text canvas — renders text at 2x for crisp quality
-  const SS = 2; // supersampling factor
-  const textCanvas = document.createElement('canvas');
-  textCanvas.width  = W * SS;
-  textCanvas.height = H * SS;
-  const textCtx = textCanvas.getContext('2d', {alpha: true});
-  // Make textCanvas accessible to drawSubtitlesOnCanvas
-  window._exportTextCanvas = textCanvas;
-  window._exportSS = SS;
-
   // MP4 first, webm fallback
   const mimeType = ['video/mp4;codecs=avc1,mp4a.40.2','video/mp4;codecs=avc1','video/mp4',
     'video/webm;codecs=vp9','video/webm']
@@ -1273,9 +1263,6 @@ document.getElementById('export-btn').addEventListener('click', async () => {
     isExporting = false;
     try { document.body.removeChild(rv); } catch(e) {}
     renderVideo = null;
-    window._exportTextCanvas = null;
-    window._exportSS = null;
-    clearGlyphCache(); // free memory after export
     document.getElementById('export-btn').textContent = '⬇ Export Video';
     document.getElementById('export-btn').classList.remove('exporting');
     document.getElementById('export-progress').classList.remove('on');
@@ -1320,23 +1307,7 @@ document.getElementById('export-btn').addEventListener('click', async () => {
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(rv, 0, 0, W, H);
-
-    // Draw subtitles using supersampled canvas for crisp text
-    if (activeCueIdx >= 0) {
-      const SS = window._exportSS || 1;
-      const tc = window._exportTextCanvas;
-      if (tc && SS > 1) {
-        const tctx = tc.getContext('2d', {alpha: true});
-        tctx.clearRect(0, 0, tc.width, tc.height);
-        drawSubtitlesOnCanvas(tctx, tc.width, tc.height);
-        // Scale down onto main canvas — supersampling produces sharp text
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
-        ctx.drawImage(tc, 0, 0, tc.width, tc.height, 0, 0, W, H);
-      } else {
-        drawSubtitlesOnCanvas(ctx, W, H);
-      }
-    }
+    if (activeCueIdx >= 0) drawSubtitlesOnCanvas(ctx, W, H);
 
     // Manually signal a new frame to the stream
     stream.getVideoTracks()[0].requestFrame && stream.getVideoTracks()[0].requestFrame();
@@ -1419,7 +1390,8 @@ function drawSubtitlesOnCanvas(ctx, W, H) {
           const isHL = lineUnits[ui] && lineUnits[ui].el.classList.contains('hl');
           const wcx = x + cw / 2;
           ctx.textAlign = 'center';
-          renderGlyph(ctx, ch, wcx, cy, canvasFontPx, isHL);
+          ctx.lineWidth = strokeW * 2; ctx.strokeStyle = '#000'; ctx.strokeText(ch, wcx, cy);
+          ctx.fillStyle = isHL ? '#FFE600' : '#FFFFFF'; ctx.fillText(ch, wcx, cy);
           ui++;
         }
         x += cw;
@@ -1437,7 +1409,8 @@ function drawSubtitlesOnCanvas(ctx, W, H) {
         const isHL = lineUnits[wi] && lineUnits[wi].el.classList.contains('hl');
         const wcx = x + ww / 2;
         ctx.textAlign = 'center';
-        renderGlyph(ctx, word, wcx, cy, canvasFontPx, isHL);
+        ctx.lineWidth = strokeW * 2; ctx.strokeStyle = '#000'; ctx.strokeText(word, wcx, cy);
+        ctx.fillStyle = isHL ? '#FFE600' : '#FFFFFF'; ctx.fillText(word, wcx, cy);
         x += ww + (wi < words.length-1 ? spW : 0);
       });
     }
@@ -1450,76 +1423,13 @@ function drawSubtitlesOnCanvas(ctx, W, H) {
 function drawChar(ctx, txt, x, y, fontPx, strokeW, isHL) {
   const cx = x + ctx.measureText(txt).width / 2;
   ctx.save();
-  ctx.textAlign = 'center';
-  renderGlyph(ctx, txt, cx, y, fontPx, isHL);
+  ctx.textAlign   = 'center';
+  ctx.lineWidth   = strokeW * 2;
+  ctx.strokeStyle = '#000000';
+  ctx.strokeText(txt, cx, y);
+  ctx.fillStyle   = isHL ? '#FFE600' : '#FFFFFF';
+  ctx.fillText(txt, cx, y);
   ctx.restore();
-}
-
-const MIN_RENDER_PX = 1000;
-
-// Glyph cache: key = "text|isHL" → {canvas, width, height}
-// Built once per export, reused every frame — zero lag
-const _glyphCache = new Map();
-let   _glyphCacheFontPx = -1;
-
-function clearGlyphCache() { _glyphCache.clear(); _glyphCacheFontPx = -1; }
-
-function _buildGlyph(txt, isHL) {
-  const key = txt + '|' + (isHL ? '1' : '0');
-  if (_glyphCache.has(key)) return _glyphCache.get(key);
-
-  const renderPx = MIN_RENDER_PX;
-  const padding  = renderPx * 0.5;
-
-  const gc   = document.createElement('canvas');
-  const gctx = gc.getContext('2d');
-  gctx.font  = `900 ${renderPx}px "Arial Black", Arial, sans-serif`;
-  const tw   = gctx.measureText(txt).width;
-
-  gc.width  = Math.ceil(tw + padding * 2);
-  gc.height = Math.ceil(renderPx * 1.4);
-
-  gctx.font         = `900 ${renderPx}px "Arial Black", Arial, sans-serif`;
-  gctx.textAlign    = 'center';
-  gctx.textBaseline = 'middle';
-  gctx.lineJoin     = 'round';
-  gctx.lineCap      = 'round';
-  gctx.miterLimit   = 2;
-
-  const gcx = gc.width / 2;
-  const gcy = gc.height / 2;
-
-  gctx.lineWidth   = renderPx * 0.08;
-  gctx.strokeStyle = 'rgba(0,0,0,0.95)';
-  gctx.strokeText(txt, gcx, gcy);
-  gctx.lineWidth   = renderPx * 0.04;
-  gctx.strokeStyle = 'rgba(0,0,0,0.7)';
-  gctx.strokeText(txt, gcx, gcy);
-  gctx.fillStyle   = isHL ? '#FFE600' : '#FFFFFF';
-  gctx.fillText(txt, gcx, gcy);
-
-  const entry = { canvas: gc, tw };
-  _glyphCache.set(key, entry);
-  return entry;
-}
-
-function renderGlyph(ctx, txt, cx, cy, fontPx, isHL) {
-  const scale  = fontPx / MIN_RENDER_PX;
-  const entry  = _buildGlyph(txt, isHL);
-  const gc     = entry.canvas;
-  const dw     = gc.width  * scale;
-  const dh     = gc.height * scale;
-
-  ctx.save();
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(gc, cx - dw / 2, cy - dh / 2, dw, dh);
-  ctx.restore();
-}
-
-function _drawGlyphDirect(ctx, txt, cx, cy, fontPx, isHL) {
-  // kept for compatibility — now routes through cache
-  renderGlyph(ctx, txt, cx, cy, fontPx, isHL);
 }
 
 
