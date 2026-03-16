@@ -1005,8 +1005,13 @@ function updateSeekBar(t) {
 // RAF LOOP — audio-time driven
 // ══════════════════════════════════════════
 function getTime() {
-  if(!isPlaying) return document.getElementById('bg-video').currentTime||0;
-  return audioStartOffset+(performance.now()-audioStartedAt)/1000;
+  const bgv = document.getElementById('bg-video');
+  if (isExporting) {
+    // During export: use actual video currentTime for perfect sync
+    return bgv ? bgv.currentTime : 0;
+  }
+  if (!isPlaying) return bgv ? bgv.currentTime : 0;
+  return audioStartOffset + (performance.now() - audioStartedAt) / 1000;
 }
 
 function rafLoop() {
@@ -1164,66 +1169,98 @@ function startCanvasLoop() {
 // ══════════════════════════════════════════
 // EXPORT
 // ══════════════════════════════════════════
-document.getElementById('export-btn').addEventListener('click', async ()=>{
-  if(isExporting){stopExport();return;}
-  if(!cues.length||!videoSrc){alert('Set up video and lyrics first!');return;}
+document.getElementById('export-btn').addEventListener('click', async () => {
+  if (isExporting) { stopExport(); return; }
+  if (!cues.length || !videoSrc) { alert('Set up video and lyrics first!'); return; }
 
-  // set canvas to native video resolution
-  // Read resolution directly from the loaded video element (most reliable)
-  const _exportBgv = document.getElementById('bg-video');
-  const capW = (_exportBgv && _exportBgv.videoWidth  > 0) ? _exportBgv.videoWidth  : (videoNativeW||3840);
-  const capH = (_exportBgv && _exportBgv.videoHeight > 0) ? _exportBgv.videoHeight : (videoNativeH||2160);
-  console.log('Export resolution:', capW, 'x', capH);
-  recCanvas.width=capW; recCanvas.height=capH;
-  drawCanvas();
+  const bgv = document.getElementById('bg-video');
+  if (!bgv || !bgv.videoWidth) { alert('Video not loaded yet.'); return; }
 
-  let stream;
-  try{stream=recCanvas.captureStream(30);}
-  catch(e){alert('Export not supported. Please use Chrome or Edge.');return;}
+  // Canvas = exact native video resolution
+  const W = bgv.videoWidth;
+  const H = bgv.videoHeight;
+  recCanvas.width  = W;
+  recCanvas.height = H;
 
-  const mimeType=['video/mp4;codecs=avc1','video/mp4','video/webm;codecs=vp9','video/webm']
-    .find(t=>MediaRecorder.isTypeSupported(t))||'video/webm';
-  const ext=mimeType.startsWith('video/mp4')?'mp4':'webm';
+  const mimeType = ['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm']
+    .find(t => MediaRecorder.isTypeSupported(t)) || 'video/webm';
 
-  recordedChunks=[];
-  try{mediaRecorder=new MediaRecorder(stream,{mimeType,videoBitsPerSecond:40000000});} // 40Mbps for 4K
-  catch(e){mediaRecorder=new MediaRecorder(stream);}
+  recordedChunks = [];
+  const stream = recCanvas.captureStream(30);
+  try { mediaRecorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 40000000 }); }
+  catch(e) { mediaRecorder = new MediaRecorder(stream); }
 
-  mediaRecorder.ondataavailable=e=>{if(e.data?.size>0)recordedChunks.push(e.data);};
-  mediaRecorder.onstop=()=>{
+  mediaRecorder.ondataavailable = e => { if (e.data?.size > 0) recordedChunks.push(e.data); };
+  mediaRecorder.onstop = () => {
+    clearInterval(exportTimerInterval);
     clearTimeout(exportRafId);
-    isExporting=false;
-    const btn=document.getElementById('export-btn');
-    btn.textContent='⬇ Export Video'; btn.classList.remove('exporting');
+    isExporting = false;
+    document.getElementById('export-btn').textContent = '⬇ Export Video';
+    document.getElementById('export-btn').classList.remove('exporting');
     document.getElementById('export-progress').classList.remove('on');
-    const blob=new Blob(recordedChunks,{type:mimeType});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');
-    a.href=url; a.download='subtitled-video.'+ext;
+    document.getElementById('export-progress').textContent = '';
+
+    const blob = new Blob(recordedChunks, { type: mimeType });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = 'subtitled-video.webm';
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    setTimeout(()=>URL.revokeObjectURL(url),8000);
+    setTimeout(() => URL.revokeObjectURL(url), 8000);
     stopPlayback();
   };
 
-  isExporting=true;
+  isExporting = true;
   mediaRecorder.start(100);
-  startCanvasLoop();
-  startPlayback(); // plays from beginning
 
-  const btn=document.getElementById('export-btn');
-  btn.textContent='⏹ Stop Export'; btn.classList.add('exporting');
-  const prog=document.getElementById('export-progress');
-  prog.classList.add('on'); prog.textContent='● Exporting...';
-  const t0=Date.now();
-  exportTimerInterval=setInterval(()=>{
-    const s=Math.floor((Date.now()-t0)/1000);
-    prog.textContent='● '+String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
-  },1000);
+  // Reset video to start
+  bgv.currentTime = 0;
+  bgv.muted = true; // must be muted for canvas capture
+  await new Promise(r => { bgv.onseeked = r; });
+
+  // Start canvas render loop — frame-perfect, no screen capture
+  let lastFrameTime = -1;
+  function renderFrame() {
+    if (!isExporting) return;
+    const t = bgv.currentTime;
+    // only draw when video has a new frame
+    if (t !== lastFrameTime) {
+      lastFrameTime = t;
+      drawCanvas();
+    }
+    exportRafId = requestAnimationFrame(renderFrame);
+  }
+
+  bgv.play();
+  bgv.onended = () => stopExport();
+  audioStartedAt = performance.now();
+  audioStartOffset = 0;
+  isPlaying = true;
+  hideCue(); clearHL();
+  activeCueIdx = -1; unitIdx = 0;
+  setTimeout(() => {
+    hlNextAt = performance.now();
+    rafId = requestAnimationFrame(rafLoop);
+    renderFrame();
+  }, 30);
+
+  // Timer
+  const t0 = Date.now();
+  exportTimerInterval = setInterval(() => {
+    const s = Math.floor((Date.now()-t0)/1000);
+    const prog = document.getElementById('export-progress');
+    prog.textContent = '● ' + String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
+  }, 1000);
+
+  document.getElementById('export-btn').textContent = '⏹ Stop Export';
+  document.getElementById('export-btn').classList.add('exporting');
+  document.getElementById('export-progress').classList.add('on');
+  document.getElementById('export-progress').textContent = '● 00:00';
 });
 
-function stopExport(){
+function stopExport() {
   clearInterval(exportTimerInterval);
-  if(mediaRecorder?.state!=='inactive') mediaRecorder.stop();
+  cancelAnimationFrame(exportRafId);
+  if (mediaRecorder?.state !== 'inactive') mediaRecorder.stop();
 }
 
 // init
