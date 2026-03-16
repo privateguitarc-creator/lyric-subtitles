@@ -1337,23 +1337,22 @@ function drawSubtitlesOnCanvas(ctx, W, H) {
   if (!ov || !si) return;
 
   const ovRect = ov.getBoundingClientRect();
+  if (ovRect.width === 0 || ovRect.height === 0) { drawSubtitlesFallback(ctx, W, H); return; }
 
-  if (ovRect.width === 0 || ovRect.height === 0) {
-    drawSubtitlesFallback(ctx, W, H);
-    return;
-  }
-
-  // Scale factors: canvas pixels per screen pixel
   const scaleX = W / ovRect.width;
   const scaleY = H / ovRect.height;
 
   const cueDiv = si.querySelector(`.cue-div[data-cue="${activeCueIdx}"]`);
   if (!cueDiv || cueDiv.style.display === 'none') return;
 
-  // ALWAYS compute font from vw slider × canvas width — never from screen pixels
-  // This ensures 4K sharpness regardless of preview window size
-  const fontVw      = parseFloat(document.getElementById('r-font').value) || 5.5;
+  // Font size: vw × canvas width — always native resolution
+  const fontVw       = parseFloat(document.getElementById('r-font').value) || 5.5;
   const canvasFontPx = Math.round(fontVw / 100 * W);
+  const lineSpacing  = parseFloat(document.getElementById('r-lspacing').value) || 1.25;
+  const wordSpEm     = parseFloat(document.getElementById('r-wspacing').value) || 0;
+  const wordSpPx     = wordSpEm * canvasFontPx;
+  const mode         = document.getElementById('r-mode').value;
+  const cue          = cues[activeCueIdx];
 
   ctx.save();
   ctx.font         = `900 ${canvasFontPx}px "Arial Black", Arial, sans-serif`;
@@ -1361,32 +1360,60 @@ function drawSubtitlesOnCanvas(ctx, W, H) {
   ctx.lineJoin     = 'round';
   ctx.lineCap      = 'round';
   ctx.miterLimit   = 2;
-
   const strokeW = Math.max(1, canvasFontPx * 0.03);
 
-  // Walk every .ch element and draw at its screen-mapped canvas position
-  const allChars = Array.from(cueDiv.querySelectorAll('.ch'));
+  // For Y position: read from DOM (accurate line positions)
+  // For X position: compute fresh from canvas font metrics (avoids CSS word-spacing issues)
+  const subLines = Array.from(cueDiv.querySelectorAll('.sl-line'));
 
-  allChars.forEach(charEl => {
-    const ch = charEl.textContent.toUpperCase();
-    if (!ch.trim()) return;
+  subLines.forEach((lineEl, li) => {
+    // Get Y center of this line from DOM
+    const lineRect = lineEl.getBoundingClientRect();
+    if (lineRect.width === 0) return;
+    const cy = (lineRect.top - ovRect.top + lineRect.height / 2) * scaleY;
 
-    const charRect = charEl.getBoundingClientRect();
-    const relX = charRect.left - ovRect.left;
-    const relY  = charRect.top  - ovRect.top;
+    // Get all units for this line
+    const lineUnits = stageUnits.filter(u => u.cueIdx === activeCueIdx && u.lineIdx === li);
+    const line = cue.lines[li];
+    const spaceW = ctx.measureText(' ').width;
 
-    // Map screen position to canvas coords
-    const cx = (relX + charRect.width  / 2) * scaleX;
-    const cy = (relY + charRect.height / 2) * scaleY;
-
-    const isHL = charEl.classList.contains('hl');
-
-    ctx.textAlign = 'center';
-    ctx.lineWidth   = strokeW * 2;
-    ctx.strokeStyle = '#000000';
-    ctx.strokeText(ch, cx, cy);
-    ctx.fillStyle   = isHL ? '#FFE600' : '#FFFFFF';
-    ctx.fillText(ch, cx, cy);
+    if (mode === 'char') {
+      const chars = line.toUpperCase().split('');
+      let totalW = 0;
+      chars.forEach(ch => { totalW += ch === ' ' ? spaceW + wordSpPx : ctx.measureText(ch).width; });
+      const posX = (cue.posX !== undefined ? cue.posX : 50) / 100;
+      let x = posX * W - totalW / 2;
+      let ui = 0;
+      chars.forEach(ch => {
+        const cw = ch === ' ' ? spaceW + wordSpPx : ctx.measureText(ch).width;
+        if (ch.trim()) {
+          const isHL = lineUnits[ui] && lineUnits[ui].el.classList.contains('hl');
+          const wcx = x + cw / 2;
+          ctx.textAlign = 'center';
+          ctx.lineWidth = strokeW * 2; ctx.strokeStyle = '#000'; ctx.strokeText(ch, wcx, cy);
+          ctx.fillStyle = isHL ? '#FFE600' : '#FFFFFF'; ctx.fillText(ch, wcx, cy);
+          ui++;
+        }
+        x += cw;
+      });
+    } else {
+      // Word mode
+      const words = line.toUpperCase().split(/\s+/);
+      const spW = spaceW + wordSpPx;
+      let totalW = 0;
+      words.forEach((w, wi) => { totalW += ctx.measureText(w).width + (wi < words.length-1 ? spW : 0); });
+      const posX = (cue.posX !== undefined ? cue.posX : 50) / 100;
+      let x = posX * W - totalW / 2;
+      words.forEach((word, wi) => {
+        const ww = ctx.measureText(word).width;
+        const isHL = lineUnits[wi] && lineUnits[wi].el.classList.contains('hl');
+        const wcx = x + ww / 2;
+        ctx.textAlign = 'center';
+        ctx.lineWidth = strokeW * 2; ctx.strokeStyle = '#000'; ctx.strokeText(word, wcx, cy);
+        ctx.fillStyle = isHL ? '#FFE600' : '#FFFFFF'; ctx.fillText(word, wcx, cy);
+        x += ww + (wi < words.length-1 ? spW : 0);
+      });
+    }
   });
 
   ctx.restore();
