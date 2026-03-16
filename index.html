@@ -1278,10 +1278,7 @@ document.getElementById('export-btn').addEventListener('click', async () => {
     alert('FROM must be before TO.'); document.body.removeChild(rv); return;
   }
 
-  // 4K subtitle clarity (supersampling only — no export logic changes)
-const EXPORT_SCALE = 2;
-recCanvas.width = W * EXPORT_SCALE;
-recCanvas.height = H * EXPORT_SCALE;
+  recCanvas.width = W; recCanvas.height = H;
 
   // Supersampled text canvas — renders text at 2x for crisp quality
   const SS = 2; // supersampling factor
@@ -1454,9 +1451,6 @@ recCanvas.height = H * EXPORT_SCALE;
     if (t >= toSec) { stopExport(); return; }
 
     const ctx = recCanvas.getContext('2d', {alpha:false});
-ctx.setTransform(EXPORT_SCALE,0,0,EXPORT_SCALE,0,0);
-ctx.imageSmoothingEnabled = true;
-ctx.imageSmoothingQuality = 'high';
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(rv, 0, 0, W, H);
@@ -1580,7 +1574,7 @@ function drawChar(ctx, txt, x, y, fontPx, strokeW, isHL) {
   ctx.restore();
 }
 
-const MIN_RENDER_PX = 1000;
+const MIN_RENDER_PX = 2000; // higher internal glyph resolution for cleaner 4K text
 
 // Glyph cache: key = "text|isHL" → {canvas, width, height}
 // Built once per export, reused every frame — zero lag
