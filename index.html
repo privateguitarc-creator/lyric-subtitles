@@ -79,11 +79,9 @@ button.grn:hover:not(:disabled) { background:#145e38; }
 #line-speeds-panel .hint { font-size:0.62rem; color:#444; margin-bottom:3px; text-transform:uppercase; letter-spacing:0.3px; }
 
 /* STAGE */
-#stage-wrap { flex:1; overflow-y:auto; overflow-x:hidden; position:relative; min-height:0; }
-#stage-wrap::-webkit-scrollbar { width:4px; }
-#stage-wrap::-webkit-scrollbar-thumb { background:#333; border-radius:2px; }
-#stage { width:100%; position:relative; background:#000; }
-#bg-video { width:100%; height:auto; display:block; position:relative; z-index:0; }
+#stage-wrap { flex:1; overflow:hidden; position:relative; min-height:0; display:flex; align-items:stretch; }
+#stage { width:100%; height:100%; position:relative; background:#000; overflow:hidden; display:flex; align-items:center; justify-content:center; }
+#bg-video { max-width:100%; max-height:100%; width:auto; height:auto; display:block; position:relative; z-index:0; object-fit:contain; }
 #stage-inner { position:absolute; z-index:2; text-align:center; line-height:1.25; cursor:move; }
 #stage-inner.dragging { user-select:none; }
 /* video size control */
@@ -301,11 +299,9 @@ function fixStageHeight() {
   if (ctrlBar) used += ctrlBar.offsetHeight;
   const lsp = document.getElementById('line-speeds-panel');
   if (lsp && lsp.style.display !== 'none') used += lsp.offsetHeight;
-  // stage-wrap gets remaining viewport height — video fills full width inside and scrolls
   const h = Math.max(120, window.innerHeight - used);
   sw.style.height = h + 'px';
-  // stage height is auto (driven by video natural height)
-  document.getElementById('stage').style.height = 'auto';
+  document.getElementById('stage').style.height = h + 'px';
   requestAnimationFrame(() => { updateVideoOverlay(); if(typeof positionSubtitle==='function') positionSubtitle(); });
 }
 window.addEventListener('resize', fixStageHeight);
@@ -345,11 +341,7 @@ function loadVideo(file) {
   document.getElementById('video-sync').src = videoSrc;
 
   // bg video
-  const _bvEl = document.getElementById('bg-video');
-  _bvEl.src = videoSrc;
-  _bvEl.onloadedmetadata = () => {
-    requestAnimationFrame(() => { updateVideoOverlay(); positionSubtitle(); });
-  };
+  document.getElementById('bg-video').src = videoSrc;
 
   // get native resolution
   const tmp = document.createElement('video');
@@ -598,7 +590,7 @@ function updateVideoOverlay() {
   const ov  = document.getElementById('video-overlay');
   if (!ov || !bgv) return;
   // overlay exactly matches the video element's rendered size
-  const rect      = bgv.getBoundingClientRect();
+  const rect = bgv.getBoundingClientRect();
   const stageRect = document.getElementById('stage').getBoundingClientRect();
   ov.style.left   = (rect.left - stageRect.left) + 'px';
   ov.style.top    = (rect.top  - stageRect.top)  + 'px';
@@ -606,36 +598,29 @@ function updateVideoOverlay() {
   ov.style.height = rect.height + 'px';
 }
 
-function scrollToSubtitle() {
-  // After placing subtitle or during playback, scroll stage-wrap so subtitle is visible
-  const sw = document.getElementById('stage-wrap');
-  const si = document.getElementById('stage-inner');
-  if (!sw || !si) return;
-  const siTop = si.offsetTop;
-  const siH   = si.offsetHeight;
-  const swH   = sw.offsetHeight;
-  const scrollY = siTop - swH / 2 + siH / 2;
-  sw.scrollTo({ top: Math.max(0, scrollY), behavior: 'smooth' });
-}
-
 function positionSubtitle(cIdx) {
   const si = document.getElementById('stage-inner');
   const ov = document.getElementById('video-overlay');
   if (!ov || !si) return;
-  updateVideoOverlay();
+  updateVideoOverlay(); // keep overlay in sync
   const ovW = ov.offsetWidth  || 1;
   const ovH = ov.offsetHeight || 1;
+  const siW = si.offsetWidth  || 0;
+  const siH = si.offsetHeight || 0;
 
+  // get position — % within the video overlay area
   const useIdx = (cIdx !== undefined) ? cIdx : activeCueIdx;
   const pos = getCuePos(useIdx);
   let x = isDragging ? subX : pos.x;
   let y = isDragging ? subY : pos.y;
 
+  // snap to center when dragging
   if (isDragging) {
     if (Math.abs(x-50) < SNAP_THRESHOLD) x = 50;
     if (Math.abs(y-50) < SNAP_THRESHOLD) y = 50;
   }
 
+  // Use transform to center exactly on the % point — no size measurement needed
   si.style.left      = (x / 100 * ovW) + 'px';
   si.style.top       = (y / 100 * ovH) + 'px';
   si.style.transform = 'translate(-50%, -50%)';
@@ -657,6 +642,7 @@ document.getElementById('stage-inner').addEventListener('mousedown', e => {
 });
 document.addEventListener('mousemove', e => {
   if (!isDragging) return;
+  // drag relative to video-overlay (= video area)
   const ov = document.getElementById('video-overlay');
   const ovW = ov ? ov.offsetWidth  : 1;
   const ovH = ov ? ov.offsetHeight : 1;
@@ -1292,11 +1278,20 @@ document.getElementById('export-btn').addEventListener('click', async () => {
     alert('FROM must be before TO.'); document.body.removeChild(rv); return;
   }
 
-  recCanvas.width = W; recCanvas.height = H;
+  // 4K supersampled canvas for ultra‑sharp subtitles
+const EXPORT_SCALE = 2;
+recCanvas.width = W * EXPORT_SCALE;
+recCanvas.height = H * EXPORT_SCALE;
 
-  // No supersampling canvas needed — glyph cache at 1000px handles 4K quality
-  window._exportTextCanvas = null;
-  window._exportSS = 1;
+  // Supersampled text canvas — renders text at 2x for crisp quality
+  const SS = 2; // supersampling factor
+  const textCanvas = document.createElement('canvas');
+  textCanvas.width  = W * SS;
+  textCanvas.height = H * SS;
+  const textCtx = textCanvas.getContext('2d', {alpha: true});
+  // Make textCanvas accessible to drawSubtitlesOnCanvas
+  window._exportTextCanvas = textCanvas;
+  window._exportSS = SS;
 
   // MP4 first, webm fallback
   const mimeType = ['video/mp4;codecs=avc1,mp4a.40.2','video/mp4;codecs=avc1','video/mp4',
@@ -1311,21 +1306,36 @@ document.getElementById('export-btn').addEventListener('click', async () => {
 
   mediaRecorder.ondataavailable = e => { if (e.data?.size > 0) recordedChunks.push(e.data); };
   mediaRecorder.onstop = () => {
-    isExporting = false;
-    try { document.body.removeChild(rv); } catch(e) {}
-    renderVideo = null;
-    window._exportTextCanvas = null;
-    window._exportSS = null;
-    clearGlyphCache(); // free memory after export
-    // Restore main video so preview works again
-    const _bgvRestore = document.getElementById('bg-video');
-    if (_bgvRestore && videoSrc) { _bgvRestore.src = videoSrc; }
+    // Reset UI immediately
     document.getElementById('export-btn').textContent = '⬇ Export Video';
     document.getElementById('export-btn').classList.remove('exporting');
     document.getElementById('export-progress').classList.remove('on');
     document.getElementById('export-progress').textContent = '';
-    if (!recordedChunks.length) return;
-    showExportPreview(new Blob(recordedChunks, {type:mimeType}), mimeType);
+
+    // Build blob FIRST before any cleanup
+    const blob = recordedChunks.length ? new Blob(recordedChunks, {type:mimeType}) : null;
+
+    // Cleanup (order matters — free heavy stuff after blob is created)
+    window._exportTextCanvas = null;
+    window._exportSS = null;
+    isExporting = false;
+
+    // Restore main video
+    const _bgvRestore = document.getElementById('bg-video');
+    if (_bgvRestore && videoSrc) { _bgvRestore.src = videoSrc; }
+
+    // Show preview immediately
+    if (blob) {
+      showExportPreview(blob, mimeType);
+    }
+
+    // Free memory after preview is shown (async so it doesn't block UI)
+    setTimeout(() => {
+      clearGlyphCache();
+      recordedChunks = [];
+      try { document.body.removeChild(rv); } catch(e) {}
+      renderVideo = null;
+    }, 100);
   };
 
   // Seek to start
@@ -1456,11 +1466,19 @@ document.getElementById('export-btn').addEventListener('click', async () => {
   function drawLoop() {
     if (!isExporting) return;
     const t = rv.currentTime;
-    if (t >= toSec) { stopExport(); return; }
+    if (t >= toSec - 0.05) { stopExport(); return; } // small buffer for frame timing
 
     const ctx = recCanvas.getContext('2d', {alpha:false});
+ctx.setTransform(EXPORT_SCALE,0,0,EXPORT_SCALE,0,0);
+ctx.imageSmoothingEnabled = true;
+ctx.imageSmoothingQuality = 'high';
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(rv, 0, 0, W, H);
+
+    // Draw subtitles purely on canvas — no DOM reads for highlights
     drawFrameForExport(t, ctx, W, H);
+
     stream.getVideoTracks()[0].requestFrame && stream.getVideoTracks()[0].requestFrame();
 
     // Progress (lightweight — only text update)
@@ -1591,9 +1609,7 @@ function _buildGlyph(txt, isHL) {
   if (_glyphCache.has(key)) return _glyphCache.get(key);
 
   const renderPx = MIN_RENDER_PX;
-  // Extra padding for stroke overflow
-  const strokePx = Math.round(renderPx * 0.06);
-  const padding  = strokePx * 3;
+  const padding  = renderPx * 0.5;
 
   const gc   = document.createElement('canvas');
   const gctx = gc.getContext('2d');
@@ -1601,9 +1617,8 @@ function _buildGlyph(txt, isHL) {
   const tw   = gctx.measureText(txt).width;
 
   gc.width  = Math.ceil(tw + padding * 2);
-  gc.height = Math.ceil(renderPx * 1.5 + padding * 2);
+  gc.height = Math.ceil(renderPx * 1.4);
 
-  // Re-set font after size change
   gctx.font         = `900 ${renderPx}px "Arial Black", Arial, sans-serif`;
   gctx.textAlign    = 'center';
   gctx.textBaseline = 'middle';
@@ -1614,13 +1629,13 @@ function _buildGlyph(txt, isHL) {
   const gcx = gc.width / 2;
   const gcy = gc.height / 2;
 
-  // Step 1: solid black stroke — single pass, no opacity tricks
-  gctx.lineWidth   = strokePx * 2; // strokeText expands outward + inward
-  gctx.strokeStyle = '#000000';
+  gctx.lineWidth   = renderPx * 0.08;
+  gctx.strokeStyle = 'rgba(0,0,0,0.95)';
   gctx.strokeText(txt, gcx, gcy);
-
-  // Step 2: solid fill on top — fully opaque, crisp
-  gctx.fillStyle = isHL ? '#FFE600' : '#FFFFFF';
+  gctx.lineWidth   = renderPx * 0.04;
+  gctx.strokeStyle = 'rgba(0,0,0,0.7)';
+  gctx.strokeText(txt, gcx, gcy);
+  gctx.fillStyle   = isHL ? '#FFE600' : '#FFFFFF';
   gctx.fillText(txt, gcx, gcy);
 
   const entry = { canvas: gc, tw };
@@ -1702,20 +1717,22 @@ function updateHighlightsForTime(t) {
 }
 
 function stopExport() {
-  if (!isExporting && !mediaRecorder) return;
+  if (!isExporting && (!mediaRecorder || mediaRecorder.state === 'inactive')) return;
   isExporting = false;
   isPlaying   = false;
-  cancelAnimationFrame(exportRafId);
+  exportRafId = cancelAnimationFrame(exportRafId);
   cancelAnimationFrame(rafId);
   clearInterval(exportTimerInterval);
   clearTimeout(hlTimerId);
   exportRafId = null;
-  // Pause + remove hidden render video immediately
+
+  // Immediately pause + remove hidden render video
   document.querySelectorAll('video[style*="-9999px"]').forEach(v => {
     try { v.pause(); v.src = ''; document.body.removeChild(v); } catch(e) {}
   });
   renderVideo = null;
-  // Stop recorder — triggers onstop → showExportPreview
+
+  // Stop recorder — this triggers onstop immediately (no delay)
   if (mediaRecorder && mediaRecorder.state !== 'inactive') {
     try { mediaRecorder.requestData(); } catch(e) {}
     try { mediaRecorder.stop(); } catch(e) {}
@@ -1750,16 +1767,13 @@ function showExportPreview(blob, mimeType) {
 function modalSave() {
   if (!exportBlobUrl) return;
   const ext = exportMime && exportMime.startsWith('video/mp4') ? 'mp4' : 'webm';
-  // Create a separate URL for download so we can revoke cleanly after
-  const dlUrl = exportBlobUrl; // keep reference
   const a = document.createElement('a');
-  a.href = dlUrl;
+  a.href = exportBlobUrl;
   a.download = 'subtitled-video.' + ext;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  // Close modal and free memory after short delay (let download start)
-  setTimeout(() => closeExportModal(), 500);
+  setTimeout(() => closeExportModal(), 300);
 }
 
 function modalDiscard() {
@@ -1776,10 +1790,8 @@ function closeExportModal() {
   modal.style.display = 'none';
   const pv = document.getElementById('export-preview-video');
   if (pv) { pv.pause(); pv.src = ''; pv.load(); }
-  // Free blob memory
   if (exportBlobUrl) { URL.revokeObjectURL(exportBlobUrl); exportBlobUrl = null; }
   exportBlob = null; exportMime = null;
-  recordedChunks = []; // free chunk memory
 }
 
 // init
