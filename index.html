@@ -1317,72 +1317,93 @@ document.getElementById('export-btn').addEventListener('click', async () => {
 function drawSubtitlesOnCanvas(ctx, W, H) {
   if (activeCueIdx < 0 || !cues[activeCueIdx]) return;
   const cue = cues[activeCueIdx];
-  const fontVw = parseFloat(document.getElementById('r-font').value) || 5.5;
-  const fontPx = Math.round(fontVw / 100 * W);
-  const lineSpacing = parseFloat(document.getElementById('r-lspacing').value) || 1.25;
-  const wordSpacingEm = parseFloat(document.getElementById('r-wspacing').value) || 0;
-  const wordSpacingPx = wordSpacingEm * fontPx;
 
-  ctx.font = `900 ${fontPx}px "Arial Black","Impact",Arial,sans-serif`;
-  ctx.textAlign = 'center';
+  // Read EXACT same settings as the CSS preview
+  const fontVw       = parseFloat(document.getElementById('r-font').value)     || 5.5;
+  const lineSpacing  = parseFloat(document.getElementById('r-lspacing').value) || 1.25;
+  const wordSpEm     = parseFloat(document.getElementById('r-wspacing').value) || 0;
+  const mode         = document.getElementById('r-mode').value; // word or char
+
+  // Font size: same % of canvas width as vw in preview
+  const fontPx      = Math.round(fontVw / 100 * W);
+  const wordSpPx    = wordSpEm * fontPx;
+
+  ctx.save();
+  ctx.font         = `900 ${fontPx}px "Arial Black", Arial, sans-serif`;
+  ctx.textAlign    = 'left';   // we'll manually position each unit
   ctx.textBaseline = 'middle';
-  ctx.lineJoin = 'round';
-  ctx.lineCap  = 'round';
-  ctx.miterLimit = 2;
+  ctx.lineJoin     = 'round';
+  ctx.lineCap      = 'round';
+  ctx.miterLimit   = 2;
 
-  const posX = (cue.posX !== undefined ? cue.posX : 50) / 100;
-  const posY = (cue.posY !== undefined ? cue.posY : 85) / 100;
-  const cx   = posX * W;
-  const lineH = fontPx * lineSpacing;
+  const posX   = (cue.posX !== undefined ? cue.posX : 50) / 100;
+  const posY   = (cue.posY !== undefined ? cue.posY : 85) / 100;
+  const lineH  = fontPx * lineSpacing;
   const totalH = lineH * cue.lines.length;
+  const baseY  = posY * H - totalH / 2;
+
+  // Stroke thickness: thin — matches CSS text-shadow (1px each side)
+  const strokeW = Math.max(1, fontPx * 0.03);
 
   cue.lines.forEach((line, li) => {
-    const y = posY * H - totalH/2 + lineH*li + lineH/2;
-    const words = line.toUpperCase().split(/\s+/);
+    const y = baseY + lineH * li + lineH / 2;
 
-    // measure total width with word spacing
-    let totalW = 0;
-    words.forEach((w, wi) => {
-      totalW += ctx.measureText(w).width;
-      if (wi < words.length-1) totalW += ctx.measureText(' ').width + wordSpacingPx;
-    });
+    // Build character/word units for this line — same as stageUnits
+    const lineUnits = stageUnits.filter(u => u.cueIdx === activeCueIdx && u.lineIdx === li);
 
-    let x = cx - totalW/2;
+    if (mode === 'char') {
+      // Draw char by char
+      const chars = line.toUpperCase().split('');
+      // Measure total line width
+      let totalW = 0;
+      chars.forEach(ch => { totalW += ctx.measureText(ch).width + (ch === ' ' ? wordSpPx : 0); });
+      let x = posX * W - totalW / 2;
 
-    // figure out which word index we're at for this line
-    // by counting units before this line
-    let unitsBefore = 0;
-    for (let prevLi = 0; prevLi < li; prevLi++) {
-      unitsBefore += cue.lines[prevLi].split(/\s+/).length;
+      let unitIdx = 0;
+      chars.forEach(ch => {
+        const cw = ctx.measureText(ch).width;
+        const isHL = ch !== ' ' && lineUnits[unitIdx] && lineUnits[unitIdx].el.classList.contains('hl');
+        if (ch !== ' ') {
+          drawChar(ctx, ch, x, y, fontPx, strokeW, isHL);
+          unitIdx++;
+        }
+        x += cw + (ch === ' ' ? wordSpPx : 0);
+      });
+    } else {
+      // Draw word by word
+      const words = line.toUpperCase().split(/\s+/);
+      const spaceW = ctx.measureText(' ').width + wordSpPx;
+      let totalW = 0;
+      words.forEach((w, wi) => { totalW += ctx.measureText(w).width + (wi < words.length-1 ? spaceW : 0); });
+      let x = posX * W - totalW / 2;
+
+      words.forEach((word, wi) => {
+        const ww = ctx.measureText(word).width;
+        const isHL = lineUnits[wi] && lineUnits[wi].el.classList.contains('hl');
+        drawChar(ctx, word, x, y, fontPx, strokeW, isHL);
+        x += ww + (wi < words.length-1 ? spaceW : 0);
+      });
     }
-
-    words.forEach((word, wi) => {
-      const cw = ctx.measureText(word).width;
-      const wcx = x + cw/2;
-
-      // check if this word unit is highlighted
-      const globalUnitIdx = stageUnits.findIndex(u =>
-        u.cueIdx === activeCueIdx && u.lineIdx === li
-      );
-      // find the specific unit for this word
-      const cueUnits = stageUnits.filter(u => u.cueIdx === activeCueIdx && u.lineIdx === li);
-      const isHL = cueUnits[wi] ? cueUnits[wi].el.classList.contains('hl') : false;
-
-      // Multi-pass stroke for sharp edges
-      const sw = Math.max(3, fontPx * 0.05);
-      ctx.lineWidth = sw * 3;
-      ctx.strokeStyle = 'rgba(0,0,0,1)';
-      ctx.strokeText(word, wcx, y);
-      ctx.lineWidth = sw * 1.5;
-      ctx.strokeStyle = 'rgba(0,0,0,0.85)';
-      ctx.strokeText(word, wcx, y);
-      ctx.fillStyle = isHL ? '#FFE600' : '#FFFFFF';
-      ctx.fillText(word, wcx, y);
-
-      x += cw + ctx.measureText(' ').width + wordSpacingPx;
-    });
   });
+
+  ctx.restore();
 }
+
+// Draw a single glyph (char or word) with outline matching CSS preview
+function drawChar(ctx, txt, x, y, fontPx, strokeW, isHL) {
+  const cx = x + ctx.measureText(txt).width / 2;
+  ctx.save();
+  ctx.textAlign = 'center';
+  // Thin clean outline — same as CSS text-shadow: 1px 1px 0 #000, -1px -1px 0 #000 etc.
+  ctx.lineWidth   = strokeW * 2;
+  ctx.strokeStyle = '#000000';
+  ctx.strokeText(txt, cx, y);
+  // Fill
+  ctx.fillStyle = isHL ? '#FFE600' : '#FFFFFF';
+  ctx.fillText(txt, cx, y);
+  ctx.restore();
+}
+
 
 function updateHighlightsForTime(t) {
   // Find active cue
@@ -1522,7 +1543,7 @@ goTab('setup');
         <div style="font-size:1.1rem;font-weight:700;color:#fff;">🎬 Export Preview</div>
         <div style="font-size:0.75rem;color:#888;margin-top:2px;">Review your exported video before saving</div>
       </div>
-      <button id="modal-close-btn" style="background:#0f3460;border:1px solid #444;color:#888;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:0.8rem;">✕ Close</button>
+      <button id="modal-close-btn" style="background:#0f3460;border:1px solid #444;color:#888;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:0.8rem;pointer-events:all;position:relative;z-index:10000;">✕ Close</button>
     </div>
 
     <!-- Video Preview -->
@@ -1532,8 +1553,8 @@ goTab('setup');
 
     <!-- Action Buttons -->
     <div style="padding:16px 20px;border-top:1px solid #0f3460;display:flex;gap:10px;align-items:center;justify-content:center;flex-shrink:0;flex-wrap:wrap;">
-      <button id="modal-save-btn" style="background:linear-gradient(135deg,#1a7a4a,#27ae60);border:1px solid #2ecc71;color:#fff;border-radius:7px;padding:10px 28px;font-size:0.95rem;font-weight:700;cursor:pointer;">⬇ Save / Download</button>
-      <button id="modal-discard-btn" style="background:#3a0f0f;border:1px solid #e94560;color:#e94560;border-radius:7px;padding:10px 28px;font-size:0.95rem;font-weight:700;cursor:pointer;">✕ Discard &amp; Edit Again</button>
+      <button id="modal-save-btn" style="background:linear-gradient(135deg,#1a7a4a,#27ae60);border:1px solid #2ecc71;color:#fff;border-radius:7px;padding:10px 28px;font-size:0.95rem;font-weight:700;cursor:pointer;pointer-events:all;position:relative;z-index:10000;">⬇ Save / Download</button>
+      <button id="modal-discard-btn" style="background:#3a0f0f;border:1px solid #e94560;color:#e94560;border-radius:7px;padding:10px 28px;font-size:0.95rem;font-weight:700;cursor:pointer;pointer-events:all;position:relative;z-index:10000;">✕ Discard &amp; Edit Again</button>
     </div>
 
   </div>
