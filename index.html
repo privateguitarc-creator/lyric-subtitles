@@ -89,7 +89,7 @@ button.grn:hover:not(:disabled) { background:#145e38; }
 .cue-div { display:none; }
 .cue-div.on { display:block; }
 .sl-line { display:block; white-space:nowrap; }
-.ch { display:inline; font-family:'Arial Black',Arial,sans-serif; font-weight:900; text-transform:uppercase; color:#fff; text-shadow:1px 1px 0 #000,-1px 1px 0 #000,1px -1px 0 #000,-1px -1px 0 #000,0 2px 4px rgba(0,0,0,0.8); transition:color 0.04s; }
+.ch { display:inline; font-family:'Arial Black',Arial,sans-serif; font-weight:900; text-transform:uppercase; color:#fff; -webkit-text-stroke: 2px #000; paint-order: stroke fill; text-shadow: 0 1px 6px rgba(0,0,0,0.5); transition:color 0.04s; }
 .ch.hl { color:#FFE600; }
 .ch.sp { display:inline; -webkit-text-stroke:0; }
 
@@ -1390,8 +1390,7 @@ function drawSubtitlesOnCanvas(ctx, W, H) {
           const isHL = lineUnits[ui] && lineUnits[ui].el.classList.contains('hl');
           const wcx = x + cw / 2;
           ctx.textAlign = 'center';
-          ctx.lineWidth = strokeW * 2; ctx.strokeStyle = '#000'; ctx.strokeText(ch, wcx, cy);
-          ctx.fillStyle = isHL ? '#FFE600' : '#FFFFFF'; ctx.fillText(ch, wcx, cy);
+          renderGlyph(ctx, ch, wcx, cy, canvasFontPx, isHL);
           ui++;
         }
         x += cw;
@@ -1409,8 +1408,7 @@ function drawSubtitlesOnCanvas(ctx, W, H) {
         const isHL = lineUnits[wi] && lineUnits[wi].el.classList.contains('hl');
         const wcx = x + ww / 2;
         ctx.textAlign = 'center';
-        ctx.lineWidth = strokeW * 2; ctx.strokeStyle = '#000'; ctx.strokeText(word, wcx, cy);
-        ctx.fillStyle = isHL ? '#FFE600' : '#FFFFFF'; ctx.fillText(word, wcx, cy);
+        renderGlyph(ctx, word, wcx, cy, canvasFontPx, isHL);
         x += ww + (wi < words.length-1 ? spW : 0);
       });
     }
@@ -1423,13 +1421,28 @@ function drawSubtitlesOnCanvas(ctx, W, H) {
 function drawChar(ctx, txt, x, y, fontPx, strokeW, isHL) {
   const cx = x + ctx.measureText(txt).width / 2;
   ctx.save();
-  ctx.textAlign   = 'center';
-  ctx.lineWidth   = strokeW * 2;
-  ctx.strokeStyle = '#000000';
-  ctx.strokeText(txt, cx, y);
-  ctx.fillStyle   = isHL ? '#FFE600' : '#FFFFFF';
-  ctx.fillText(txt, cx, y);
+  ctx.textAlign = 'center';
+  renderGlyph(ctx, txt, cx, y, fontPx, isHL);
   ctx.restore();
+}
+
+function renderGlyph(ctx, txt, cx, cy, fontPx, isHL) {
+  // Step 1: thick black stroke pass — forms the outline
+  ctx.lineJoin    = 'round';
+  ctx.lineCap     = 'round';
+  ctx.miterLimit  = 2;
+  ctx.lineWidth   = Math.max(2, fontPx * 0.08); // 8% of font
+  ctx.strokeStyle = 'rgba(0,0,0,0.95)';
+  ctx.strokeText(txt, cx, cy);
+
+  // Step 2: slightly thinner inner stroke to smooth the edge
+  ctx.lineWidth   = Math.max(1, fontPx * 0.04);
+  ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+  ctx.strokeText(txt, cx, cy);
+
+  // Step 3: fill on top — crisp solid color
+  ctx.fillStyle = isHL ? '#FFE600' : '#FFFFFF';
+  ctx.fillText(txt, cx, cy);
 }
 
 
