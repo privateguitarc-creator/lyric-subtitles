@@ -707,14 +707,30 @@ function buildStage() {
 }
 
 function showCue(idx) {
-  document.querySelectorAll('.cue-div').forEach((el,i)=>{el.classList.toggle('on',i===idx);el.style.display=i===idx?'block':'none';});
-  activeCueIdx=idx;
-  // load this cue's saved position
-  if(idx>=0 && cues[idx]){
+  // Step 1: Update position BEFORE showing cue (prevents 1-frame flash)
+  if (idx >= 0 && cues[idx]) {
     subX = cues[idx].posX !== undefined ? cues[idx].posX : 50;
     subY = cues[idx].posY !== undefined ? cues[idx].posY : 85;
-    requestAnimationFrame(()=>positionSubtitle(idx));
+    // Pre-position stage-inner immediately, synchronously
+    const si = document.getElementById('stage-inner');
+    const ov = document.getElementById('video-overlay');
+    if (si && ov) {
+      const ovW = ov.offsetWidth  || 1;
+      const ovH = ov.offsetHeight || 1;
+      const siW = si.offsetWidth  || 0;
+      const siH = si.offsetHeight || 0;
+      si.style.left = Math.max(0, Math.min(ovW-siW, (subX/100)*ovW - siW/2)) + 'px';
+      si.style.top  = Math.max(0, Math.min(ovH-siH, (subY/100)*ovH - siH/2)) + 'px';
+    }
   }
+  // Step 2: Restore visibility and show cue — position already set
+  const _si = document.getElementById('stage-inner');
+  if (_si) _si.style.visibility = 'visible';
+  document.querySelectorAll('.cue-div').forEach((el,i)=>{
+    el.classList.toggle('on', i===idx);
+    el.style.display = i===idx ? 'block' : 'none';
+  });
+  activeCueIdx = idx;
 }
 function hideCue() {
   document.querySelectorAll('.cue-div').forEach(el=>{el.classList.remove('on');el.style.display='none';});
@@ -1472,8 +1488,13 @@ function updateHighlightsForTime(t) {
 
   if (wantCue !== activeCueIdx) {
     clearHL();
-    showCue(wantCue === -1 ? -1 : wantCue);
-    if (wantCue === -1) { hideCue(); activeCueIdx = -1; return; }
+    clearTimeout(hlTimerId);
+    if (wantCue === -1) {
+      hideCue();
+      unitIdx = 0;
+      return;
+    }
+    showCue(wantCue); // positions THEN shows — no flash
   }
   if (wantCue === -1) return;
 
