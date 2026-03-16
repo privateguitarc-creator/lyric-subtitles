@@ -1202,123 +1202,113 @@ document.getElementById('export-btn').addEventListener('click', async () => {
   if (isExporting) { stopExport(); return; }
   if (!cues.length || !videoSrc) { alert('Set up video and lyrics first!'); return; }
 
-  // STOP any current playback immediately
+  // Stop any current playback
   stopPlayback();
 
-  // Parse FROM / TO times
-  const fromStr = document.getElementById('export-from').value.trim();
-  const toStr   = document.getElementById('export-to').value.trim();
+  // Parse FROM / TO
+  const fromStr = (document.getElementById('export-from').value||'').trim();
+  const toStr   = (document.getElementById('export-to').value||'').trim();
+  const fromSec = fromStr ? (mmssToSecs(fromStr)||0) : 0;
 
-  const fromSec = fromStr ? mmssToSecs(fromStr) || 0 : 0;
+  // Create hidden render video
+  const rv = document.createElement('video');
+  rv.src = videoSrc; rv.muted = true; rv.preload = 'auto';
+  rv.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;';
+  document.body.appendChild(rv);
 
-  // Hidden offscreen video for rendering
-  const renderVid = document.createElement('video');
-  renderVid.src     = videoSrc;
-  renderVid.muted   = true;
-  renderVid.preload = 'auto';
-  renderVid.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;';
-  document.body.appendChild(renderVid);
-
-  // Wait for metadata to know duration
-  await new Promise((res) => {
-    if (renderVid.readyState >= 1) { res(); return; }
-    renderVid.onloadedmetadata = res;
-    setTimeout(res, 5000);
+  await new Promise(res => {
+    if (rv.readyState >= 1) return res();
+    rv.onloadedmetadata = res; setTimeout(res, 5000);
   });
 
-  const vidDuration = renderVid.duration || 0;
-  const toSec = (toStr && mmssToSecs(toStr)) ? Math.min(mmssToSecs(toStr), vidDuration) : vidDuration;
+  const W  = rv.videoWidth  || 1920;
+  const H  = rv.videoHeight || 1080;
+  const dur = rv.duration || 0;
+  const toSec = (toStr && mmssToSecs(toStr)) ? Math.min(mmssToSecs(toStr), dur) : dur;
 
-  if (fromSec >= toSec) { alert('FROM time must be before TO time.'); document.body.removeChild(renderVid); return; }
+  if (fromSec >= toSec) {
+    alert('FROM must be before TO.'); document.body.removeChild(rv); return;
+  }
 
-  const W  = renderVid.videoWidth  || 1920;
-  const H  = renderVid.videoHeight || 1080;
-  const FPS = 30;
-  const segDuration  = toSec - fromSec;
-  const totalFrames  = Math.ceil(segDuration * FPS);
-  const frameInterval = 1 / FPS;
+  recCanvas.width = W; recCanvas.height = H;
 
-  recCanvas.width  = W;
-  recCanvas.height = H;
-
-  const mimeType = ['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm']
+  // MP4 first, webm fallback
+  const mimeType = ['video/mp4;codecs=avc1,mp4a.40.2','video/mp4;codecs=avc1','video/mp4',
+    'video/webm;codecs=vp9','video/webm']
     .find(t => MediaRecorder.isTypeSupported(t)) || 'video/webm';
+  const ext = mimeType.startsWith('video/mp4') ? 'mp4' : 'webm';
 
   recordedChunks = [];
-  const stream = recCanvas.captureStream(FPS);
+  const stream = recCanvas.captureStream(0); // 0 = manual frame timing
   try { mediaRecorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 80000000 }); }
-  catch(e) { mediaRecorder = new MediaRecorder(stream); }
+  catch(e) { mediaRecorder = new MediaRecorder(stream, { videoBitsPerSecond: 80000000 }); }
 
   mediaRecorder.ondataavailable = e => { if (e.data?.size > 0) recordedChunks.push(e.data); };
   mediaRecorder.onstop = () => {
     isExporting = false;
-    try { document.body.removeChild(renderVid); } catch(e) {}
+    try { document.body.removeChild(rv); } catch(e) {}
     document.getElementById('export-btn').textContent = '⬇ Export Video';
     document.getElementById('export-btn').classList.remove('exporting');
     document.getElementById('export-progress').classList.remove('on');
     document.getElementById('export-progress').textContent = '';
-    if (recordedChunks.length === 0) return;
-    const blob = new Blob(recordedChunks, { type: mimeType });
-    showExportPreview(blob, mimeType);
+    if (!recordedChunks.length) return;
+    showExportPreview(new Blob(recordedChunks, {type:mimeType}), mimeType);
   };
 
-  // Seek to start point
-  renderVid.currentTime = fromSec;
-  await new Promise(r => { renderVid.onseeked = r; setTimeout(r, 3000); });
+  // Seek to start
+  rv.currentTime = fromSec;
+  await new Promise(r => { rv.onseeked = r; setTimeout(r, 3000); });
 
   isExporting = true;
-  mediaRecorder.start();
+  mediaRecorder.start(100);
 
   document.getElementById('export-btn').textContent = '⏹ Stop & Preview';
   document.getElementById('export-btn').classList.add('exporting');
   document.getElementById('export-progress').classList.add('on');
-  document.getElementById('export-progress').textContent = 'Starting...';
+  document.getElementById('export-progress').textContent = 'Rendering...';
 
-  // Parallel seek batching — seek multiple frames ahead for speed
-  const BATCH = 3; // process N frames before yielding UI
+  // Kick off subtitle engine for time t
+  hideCue(); clearHL(); activeCueIdx = -1; unitIdx = 0;
+  audioStartedAt = performance.now() - fromSec * 1000;
+  audioStartOffset = fromSec;
+  isPlaying = true;
+  hlNextAt = performance.now();
+  rafId = requestAnimationFrame(rafLoop);
 
-  async function renderFrameAt(frameIdx) {
-    if (!isExporting) {
-      // User stopped — flush what we have
-      if (mediaRecorder.state !== 'inactive') mediaRecorder.stop();
-      return;
-    }
-    const t = fromSec + frameIdx * frameInterval;
-    if (t > toSec + 0.01) { stopExport(); return; }
+  // Play hidden video
+  rv.play();
+  rv.onended = () => { if (isExporting) stopExport(); };
 
-    renderVid.currentTime = t;
-    await new Promise(r => {
-      const done = () => { renderVid.removeEventListener('seeked', done); r(); };
-      renderVid.addEventListener('seeked', done);
-      setTimeout(r, 300);
-    });
+  // rAF loop: draw every frame as fast as browser delivers them
+  function drawLoop() {
+    if (!isExporting) return;
+    const t = rv.currentTime;
 
-    if (!isExporting) { if (mediaRecorder.state !== 'inactive') mediaRecorder.stop(); return; }
+    // Stop at TO time
+    if (t >= toSec) { stopExport(); return; }
 
-    updateHighlightsForTime(t);
-
-    const ctx = recCanvas.getContext('2d', { alpha: false, desynchronized: true });
+    const ctx = recCanvas.getContext('2d', {alpha:false, desynchronized:true});
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(renderVid, 0, 0, W, H);
+    ctx.drawImage(rv, 0, 0, W, H);
     if (activeCueIdx >= 0) drawSubtitlesOnCanvas(ctx, W, H);
 
-    // Progress update
-    const pct = Math.min(100, Math.round((frameIdx / totalFrames) * 100));
-    const elapsed = frameIdx * frameInterval;
+    // Manually signal a new frame to the stream
+    stream.getVideoTracks()[0].requestFrame && stream.getVideoTracks()[0].requestFrame();
+
+    // Progress
+    const elapsed = t - fromSec;
+    const total   = toSec - fromSec;
+    const pct = Math.min(100, Math.round(elapsed/total*100));
     const em = String(Math.floor(elapsed/60)).padStart(2,'0');
     const es = String(Math.floor(elapsed%60)).padStart(2,'0');
-    const tm = String(Math.floor(segDuration/60)).padStart(2,'0');
-    const ts = String(Math.floor(segDuration%60)).padStart(2,'0');
+    const tm = String(Math.floor(total/60)).padStart(2,'0');
+    const ts = String(Math.floor(total%60)).padStart(2,'0');
     document.getElementById('export-progress').textContent = `${pct}% · ${em}:${es} / ${tm}:${ts}`;
 
-    // Yield every BATCH frames
-    if (frameIdx % BATCH === 0) await new Promise(r => setTimeout(r, 0));
-
-    await renderFrameAt(frameIdx + 1);
+    exportRafId = requestAnimationFrame(drawLoop);
   }
-
-  await renderFrameAt(0);
+  exportRafId = requestAnimationFrame(drawLoop);
 });
 
 
@@ -1442,18 +1432,19 @@ function updateHighlightsForTime(t) {
 }
 
 function stopExport() {
-  isExporting = false; // stops the render loop immediately
+  isExporting = false;
+  isPlaying = false;
   cancelAnimationFrame(exportRafId);
+  cancelAnimationFrame(rafId);
   clearInterval(exportTimerInterval);
-  // stop recorder — onstop will show preview of whatever was rendered
+  clearTimeout(hlTimerId);
+  document.querySelectorAll('video[style*="-9999px"]').forEach(v => {
+    try { v.pause(); document.body.removeChild(v); } catch(e) {}
+  });
   if (mediaRecorder?.state !== 'inactive') {
-    mediaRecorder.requestData(); // flush any buffered data first
+    try { mediaRecorder.requestData(); } catch(e) {}
     mediaRecorder.stop();
   }
-  // cleanup hidden video elements
-  document.querySelectorAll('video[style*="-9999px"]').forEach(v => {
-    try { document.body.removeChild(v); } catch(e) {}
-  });
 }
 
 // ══════════════════════════════════════════
@@ -1520,7 +1511,7 @@ function closeExportModal() {
 goTab('setup');
 </script>
 <!-- Export Preview Modal -->
-<div id="export-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:9999;display:none;align-items:center;justify-content:center;flex-direction:column;">
+<div id="export-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:9999;align-items:center;justify-content:center;flex-direction:column;">
   <div style="background:#16213e;border:2px solid #e94560;border-radius:12px;max-width:90vw;width:900px;max-height:95vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 0 40px rgba(233,69,96,0.3);">
 
     <!-- Header -->
