@@ -1454,22 +1454,80 @@ function drawChar(ctx, txt, x, y, fontPx, strokeW, isHL) {
   ctx.restore();
 }
 
+// Minimum render size for sharp text — always render at this size or larger
+const MIN_RENDER_PX = 200;
+
 function renderGlyph(ctx, txt, cx, cy, fontPx, isHL) {
-  // Step 1: thick black stroke pass — forms the outline
+  // If fontPx is already large enough, draw directly
+  if (fontPx >= MIN_RENDER_PX) {
+    _drawGlyphDirect(ctx, txt, cx, cy, fontPx, isHL);
+    return;
+  }
+
+  // fontPx is too small — render at MIN_RENDER_PX then scale down
+  // This gives CSS-quality antialiasing for any font size
+  const scale = fontPx / MIN_RENDER_PX;
+  const renderPx = MIN_RENDER_PX;
+
+  // Create/reuse offscreen canvas for glyph
+  if (!renderGlyph._canvas) {
+    renderGlyph._canvas = document.createElement('canvas');
+  }
+  const gc = renderGlyph._canvas;
+  const padding = renderPx * 0.6; // space for stroke overflow
+
+  // Measure text at render size to get canvas width
+  const tmpCtx = gc.getContext('2d');
+  tmpCtx.font = `900 ${renderPx}px "Arial Black", Arial, sans-serif`;
+  const tw = tmpCtx.measureText(txt).width;
+
+  gc.width  = Math.ceil(tw + padding * 2);
+  gc.height = Math.ceil(renderPx * 1.5); // enough for ascenders/descenders
+
+  const gctx = gc.getContext('2d');
+  gctx.clearRect(0, 0, gc.width, gc.height);
+  gctx.font         = `900 ${renderPx}px "Arial Black", Arial, sans-serif`;
+  gctx.textAlign    = 'center';
+  gctx.textBaseline = 'middle';
+  gctx.lineJoin     = 'round';
+  gctx.lineCap      = 'round';
+  gctx.miterLimit   = 2;
+
+  const gcx = gc.width / 2;
+  const gcy = gc.height / 2;
+
+  // Stroke
+  gctx.lineWidth   = Math.max(4, renderPx * 0.08);
+  gctx.strokeStyle = 'rgba(0,0,0,0.95)';
+  gctx.strokeText(txt, gcx, gcy);
+  gctx.lineWidth   = Math.max(2, renderPx * 0.04);
+  gctx.strokeStyle = 'rgba(0,0,0,0.7)';
+  gctx.strokeText(txt, gcx, gcy);
+  // Fill
+  gctx.fillStyle = isHL ? '#FFE600' : '#FFFFFF';
+  gctx.fillText(txt, gcx, gcy);
+
+  // Draw scaled-down onto main canvas — high quality downscale = crisp text
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  const dw = gc.width  * scale;
+  const dh = gc.height * scale;
+  ctx.drawImage(gc, cx - dw/2, cy - dh/2, dw, dh);
+  ctx.restore();
+}
+
+function _drawGlyphDirect(ctx, txt, cx, cy, fontPx, isHL) {
   ctx.lineJoin    = 'round';
   ctx.lineCap     = 'round';
   ctx.miterLimit  = 2;
-  ctx.lineWidth   = Math.max(2, fontPx * 0.08); // 8% of font
+  ctx.lineWidth   = Math.max(2, fontPx * 0.08);
   ctx.strokeStyle = 'rgba(0,0,0,0.95)';
   ctx.strokeText(txt, cx, cy);
-
-  // Step 2: slightly thinner inner stroke to smooth the edge
   ctx.lineWidth   = Math.max(1, fontPx * 0.04);
   ctx.strokeStyle = 'rgba(0,0,0,0.7)';
   ctx.strokeText(txt, cx, cy);
-
-  // Step 3: fill on top — crisp solid color
-  ctx.fillStyle = isHL ? '#FFE600' : '#FFFFFF';
+  ctx.fillStyle   = isHL ? '#FFE600' : '#FFFFFF';
   ctx.fillText(txt, cx, cy);
 }
 
