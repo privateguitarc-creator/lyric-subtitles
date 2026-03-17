@@ -854,19 +854,14 @@ function buildLineSpeeds() {
 
           const holdInp = document.createElement('input');
           holdInp.type = 'number'; holdInp.min = 0; holdInp.max = 30; holdInp.step = 0.1;
-          holdInp.value = (cue.unitHolds && cue.unitHolds[holdIdx]) ? cue.unitHolds[holdIdx] : 0;
-          holdInp.title = 'After "'+word+'" highlights, hold for this many seconds';
+          holdInp.value = (cue.wordHolds && cue.wordHolds[li] && cue.wordHolds[li][wi]) ? cue.wordHolds[li][wi] : 0;
+          holdInp.title = 'After "'+word+'" highlights fully, hold for this many seconds';
           holdInp.style.cssText = 'width:38px;font-size:0.68rem;background:#0a1020;border:1px solid #2a5a8a;border-radius:3px;color:#88ccff;padding:1px 3px;text-align:center;outline:none;';
           holdInp.addEventListener('change', () => {
             const v = Math.max(0, parseFloat(holdInp.value)||0);
-            if (!cue.unitHolds) cue.unitHolds = [];
-            // Clear hold on all chars of this word first, set only on last char
-            wordUnits.forEach(u => {
-              while (cue.unitHolds.length <= u.unitLocalIdx) cue.unitHolds.push(0);
-              cue.unitHolds[u.unitLocalIdx] = 0;
-            });
-            while (cue.unitHolds.length <= holdIdx) cue.unitHolds.push(0);
-            cue.unitHolds[holdIdx] = v;
+            if (!cue.wordHolds) cue.wordHolds = [];
+            if (!cue.wordHolds[li]) cue.wordHolds[li] = [];
+            cue.wordHolds[li][wi] = v;
             holdInp.value = v;
           });
           holdInp.addEventListener('keydown', e => { if(e.key==='Enter') holdInp.blur(); });
@@ -994,15 +989,45 @@ function hlTick() {
   const u = stageUnits[unitIdx];
   if (u.cueIdx !== activeCueIdx) return;
   u.el.classList.add('hl');
-  const localIdx = u.unitLocalIdx !== undefined ? u.unitLocalIdx : stageUnits.filter(x=>x.cueIdx===u.cueIdx).indexOf(u);
   unitIdx++;
+
   const mode = document.getElementById('r-mode').value;
-  const globalSpd = mode==='char' ? parseInt(document.getElementById('r-csp').value) : parseInt(document.getElementById('r-wsp').value);
+  const globalSpd = mode==='char'
+    ? parseInt(document.getElementById('r-csp').value)
+    : parseInt(document.getElementById('r-wsp').value);
   const cue = cues[u.cueIdx];
-  const lineSpd = (cue && cue.lineSpeeds && cue.lineSpeeds[u.lineIdx] != null) ? cue.lineSpeeds[u.lineIdx] : globalSpd;
-  // Per-unit hold (takes priority) or per-line hold
-  const unitHoldMs = (cue && cue.unitHolds && cue.unitHolds[localIdx]) ? (cue.unitHolds[localIdx] * 1000) : 0;
-  hlNextAt += lineSpd + unitHoldMs;
+  const lineSpd = (cue && cue.lineSpeeds && cue.lineSpeeds[u.lineIdx] != null)
+    ? cue.lineSpeeds[u.lineIdx] : globalSpd;
+
+  // Calculate hold: wordHolds[lineIdx][wordIndex]
+  // Only fires on the LAST char/unit of each word
+  let holdMs = 0;
+  if (cue && cue.wordHolds && cue.wordHolds[u.lineIdx]) {
+    const lineWords = cue.lines[u.lineIdx].split(' ').filter(w => w.length > 0);
+    const lineUnits = stageUnits.filter(x => x.cueIdx === u.cueIdx && x.lineIdx === u.lineIdx);
+    const posInLine  = lineUnits.indexOf(u); // 0-based position in this line
+
+    if (mode === 'word') {
+      // word mode: posInLine === wordIndex directly
+      holdMs = ((cue.wordHolds[u.lineIdx][posInLine] || 0) * 1000);
+    } else {
+      // char mode: find which word this char belongs to, fire hold on last char of word
+      let charsSoFar = 0;
+      for (let wi = 0; wi < lineWords.length; wi++) {
+        const wordEnd = charsSoFar + lineWords[wi].length - 1;
+        if (posInLine >= charsSoFar && posInLine <= wordEnd) {
+          // This char is in word wi — only apply hold if it's the LAST char of word wi
+          if (posInLine === wordEnd) {
+            holdMs = ((cue.wordHolds[u.lineIdx][wi] || 0) * 1000);
+          }
+          break;
+        }
+        charsSoFar += lineWords[wi].length;
+      }
+    }
+  }
+
+  hlNextAt += lineSpd + holdMs;
   scheduleHl();
 }
 
