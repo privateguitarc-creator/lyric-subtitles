@@ -810,50 +810,74 @@ function buildLineSpeeds() {
 
       list.appendChild(row);
 
-      // ── Per-unit hold sub-row ──
-      const lineUnitsForRow = stageUnits.filter(u => u.cueIdx === ci && u.lineIdx === li);
-      if (lineUnitsForRow.length > 0) {
+      // ── Per-WORD hold sub-row (groups chars in char mode) ──
+      // Build word groups from the line text regardless of mode
+      const lineWordsRaw = line.split(/\s+/).filter(w=>w.length>0);
+      const lineUnitsAll  = stageUnits.filter(u => u.cueIdx===ci && u.lineIdx===li);
+      if (lineWordsRaw.length > 0 && lineUnitsAll.length > 0) {
         const holdRow = document.createElement('div');
         holdRow.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;padding:2px 4px 4px 46px;background:#080818;border-bottom:1px solid #0a0a1a;';
 
-        lineUnitsForRow.forEach((u, wi) => {
-          const wordText = u.el.textContent;
-          const localIdx = u.unitLocalIdx;
+        const holdTitle = document.createElement('div');
+        holdTitle.style.cssText = 'width:100%;font-size:0.58rem;color:#333;margin-bottom:2px;';
+        holdTitle.textContent = '⏸ Hold per word (seconds) — after this word is highlighted, wait this long';
+        holdRow.appendChild(holdTitle);
 
+        // Group units by word — in word mode 1 unit per word
+        // in char mode multiple chars per word — use LAST char of each word as the hold point
+        const mode = document.getElementById('r-mode').value;
+        
+        lineWordsRaw.forEach((word, wi) => {
+          // Find units belonging to this word
+          let wordUnits;
+          if (mode === 'word') {
+            wordUnits = [lineUnitsAll[wi]].filter(Boolean);
+          } else {
+            // char mode: chars of this word, offset by chars of previous words+spaces
+            let charOffset = 0;
+            for (let pw=0; pw<wi; pw++) charOffset += lineWordsRaw[pw].length;
+            wordUnits = lineUnitsAll.slice(charOffset, charOffset + word.length);
+          }
+          if (!wordUnits.length) return;
+          
+          // Hold is stored on the LAST unit of the word (so hold fires after word fully highlighted)
+          const lastUnit = wordUnits[wordUnits.length - 1];
+          const holdIdx  = lastUnit.unitLocalIdx;
+          
           const unitWrap = document.createElement('span');
           unitWrap.style.cssText = 'display:flex;align-items:center;gap:2px;background:#0f1a2a;border:1px solid #1a3a5a;border-radius:4px;padding:2px 5px;';
 
           const wordLbl = document.createElement('span');
-          wordLbl.style.cssText = 'font-size:0.68rem;color:#aaa;max-width:60px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-          wordLbl.textContent = wordText;
+          wordLbl.style.cssText = 'font-size:0.68rem;color:#aaa;max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700;';
+          wordLbl.textContent = word;
           unitWrap.appendChild(wordLbl);
 
           const holdInp = document.createElement('input');
           holdInp.type = 'number'; holdInp.min = 0; holdInp.max = 30; holdInp.step = 0.1;
-          holdInp.value = (cue.unitHolds && cue.unitHolds[localIdx]) ? cue.unitHolds[localIdx] : 0;
-          holdInp.title = 'Hold on "' + wordText + '" for this many seconds before moving to next';
+          holdInp.value = (cue.unitHolds && cue.unitHolds[holdIdx]) ? cue.unitHolds[holdIdx] : 0;
+          holdInp.title = 'After "'+word+'" highlights, hold for this many seconds';
           holdInp.style.cssText = 'width:38px;font-size:0.68rem;background:#0a1020;border:1px solid #2a5a8a;border-radius:3px;color:#88ccff;padding:1px 3px;text-align:center;outline:none;';
           holdInp.addEventListener('change', () => {
+            const v = Math.max(0, parseFloat(holdInp.value)||0);
             if (!cue.unitHolds) cue.unitHolds = [];
-            while (cue.unitHolds.length <= localIdx) cue.unitHolds.push(0);
-            cue.unitHolds[localIdx] = Math.max(0, parseFloat(holdInp.value) || 0);
-            holdInp.value = cue.unitHolds[localIdx];
+            // Clear hold on all chars of this word first, set only on last char
+            wordUnits.forEach(u => {
+              while (cue.unitHolds.length <= u.unitLocalIdx) cue.unitHolds.push(0);
+              cue.unitHolds[u.unitLocalIdx] = 0;
+            });
+            while (cue.unitHolds.length <= holdIdx) cue.unitHolds.push(0);
+            cue.unitHolds[holdIdx] = v;
+            holdInp.value = v;
           });
-          holdInp.addEventListener('keydown', e => { if (e.key==='Enter') holdInp.blur(); });
+          holdInp.addEventListener('keydown', e => { if(e.key==='Enter') holdInp.blur(); });
           unitWrap.appendChild(holdInp);
 
           const sLbl = document.createElement('span');
           sLbl.style.cssText = 'font-size:0.6rem;color:#446;';
           sLbl.textContent = 's';
           unitWrap.appendChild(sLbl);
-
           holdRow.appendChild(unitWrap);
         });
-
-        const holdTitle = document.createElement('div');
-        holdTitle.style.cssText = 'width:100%;font-size:0.58rem;color:#333;margin-bottom:2px;';
-        holdTitle.textContent = '⏸ Hold per word (seconds) — click word on screen to jump';
-        holdRow.insertBefore(holdTitle, holdRow.firstChild);
 
         list.appendChild(holdRow);
       }
