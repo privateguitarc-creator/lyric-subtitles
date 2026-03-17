@@ -156,6 +156,15 @@ canvas { display:none; }
       <button id="r-stop" class="sec">⏹ Stop</button>
       <button id="r-record" class="grn">⏺ Record</button>
       <span id="rec-timer">00:00</span>
+      <div class="sl" style="margin-left:6px;">
+        <label>Output</label>
+        <select id="r-resolution" style="background:#0f3460;color:#fff;border:1px solid #444;border-radius:4px;padding:3px 5px;font-size:0.76rem;outline:none;cursor:pointer;">
+          <option value="1920x1080">1080p (1920×1080)</option>
+          <option value="3840x2160">4K (3840×2160)</option>
+          <option value="1280x720">720p (1280×720)</option>
+          <option value="2560x1440">2K (2560×1440)</option>
+        </select>
+      </div>
       <span id="rec-status-msg" style="font-size:0.75rem;color:#f39c12;margin-left:6px;"></span>
       <div class="sl" style="margin-left:4px;"><label>Mode</label><select id="r-mode"><option value="word">Word</option><option value="char">Char</option></select></div>
       <div class="sl"><label>Word ms</label><input type="range" id="r-wsp" min="80" max="1500" value="350" step="20" style="width:80px;"><span class="vl" id="r-wsp-v">350</span></div>
@@ -1156,18 +1165,13 @@ document.getElementById('r-record').addEventListener('click', async () => {
   if (isRecording) { stopRecording(); return; }
   if (!cues.length) { alert('Load lyrics first!'); return; }
 
-  // Use tab screen capture — records exactly what you see, no canvas lag
-  let stream;
-  try {
-    stream = await navigator.mediaDevices.getDisplayMedia({
-      video: { frameRate: 30, displaySurface: 'browser' },
-      audio: false,
-      preferCurrentTab: true
-    });
-  } catch(e) {
-    alert('Please allow screen sharing when prompted.\nTip: Select THIS TAB in the Chrome dialog.');
-    return;
-  }
+  // Get output resolution from selector
+  const resSel = document.getElementById('r-resolution');
+  const [outW, outH] = resSel ? resSel.value.split('x').map(Number) : [1920, 1080];
+
+  // Set canvas to exact output resolution
+  recCanvas.width  = outW;
+  recCanvas.height = outH;
 
   const mimeType = [
     'video/mp4;codecs=avc1', 'video/mp4',
@@ -1175,9 +1179,13 @@ document.getElementById('r-record').addEventListener('click', async () => {
   ].find(t => MediaRecorder.isTypeSupported(t)) || 'video/webm';
   const fileExt = mimeType.includes('mp4') ? 'mp4' : 'webm';
 
+  // Use canvas captureStream — NO screen capture needed
+  // Canvas draws green screen + subtitles at full output resolution
+  const stream = recCanvas.captureStream(30);
+
   recordedChunks = [];
   try {
-    mediaRecorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 20000000 });
+    mediaRecorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 40000000 });
   } catch(e) {
     mediaRecorder = new MediaRecorder(stream);
   }
@@ -1189,22 +1197,22 @@ document.getElementById('r-record').addEventListener('click', async () => {
   mediaRecorder.onstop = () => {
     clearInterval(recTimerInterval);
     isRecording = false;
-    stream.getTracks().forEach(t => t.stop());
     document.getElementById('r-record').textContent = '⏺ Record';
     document.getElementById('r-record').classList.remove('rec');
     document.getElementById('rec-timer').classList.remove('on');
+    clearInterval(recCanvasInterval);
     if (!recordedChunks.length) { alert('Nothing recorded.'); return; }
     const blob = new Blob(recordedChunks, { type: mimeType });
     showPreviewModal(blob, fileExt);
   };
 
-  // If user stops sharing via Chrome's "Stop sharing" button
-  stream.getVideoTracks()[0].addEventListener('ended', () => {
-    if (isRecording) stopRecording();
-  });
-
   isRecording = true;
   mediaRecorder.start(100);
+
+  // Start canvas draw loop at 30fps
+  clearInterval(recCanvasInterval);
+  recCanvasInterval = setInterval(drawCanvas, 1000/30);
+
   startPlayback();
 
   document.getElementById('r-record').textContent = '⏹ Stop & Save';
@@ -1218,7 +1226,7 @@ document.getElementById('r-record').addEventListener('click', async () => {
   }, 1000);
 });
 
-// ── PREVIEW MODAL before saving ──
+
 function showPreviewModal(blob, fileExt) {
   const url = URL.createObjectURL(blob);
   const overlay = document.createElement('div');
@@ -1290,6 +1298,9 @@ function stopRecording() {
   clearInterval(recCanvasInterval); recCanvasInterval = null;
   if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
   stopPlayback();
+  // Clear canvas after recording
+  const ctx = recCanvas.getContext('2d');
+  ctx.clearRect(0, 0, recCanvas.width, recCanvas.height);
 }
 
 // init
