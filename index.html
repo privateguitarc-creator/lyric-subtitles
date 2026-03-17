@@ -81,7 +81,7 @@ audio { width:100%; border-radius:5px; }
 /* STAGE */
 #stage-wrap { overflow:hidden; position:relative; flex:1; min-height:0; }
 #stage { background:#00FF00; width:100%; height:100%; min-height:0; display:flex; align-items:center; justify-content:center; overflow:hidden; }
-#stage-inner { text-align:center; width:90%; line-height:1.25; }
+#stage-inner { text-align:center; width:90%; line-height:1.0; }
 .cue-div { display:none; }
 .cue-div.on { display:block; }
 .sl-line { display:block; white-space:nowrap; }
@@ -171,7 +171,7 @@ canvas { display:none; }
           <option value="arial-lower">Arial Black (Caps/small)</option>
         </select>
       </div>
-      <div class="sl"><label>Line Gap</label><input type="range" id="r-linegap" min="1" max="3" value="1.3" step="0.05" style="width:75px;"><span class="vl" id="r-linegap-v">1.3</span></div>
+      <div class="sl"><label>Line Gap</label><input type="range" id="r-linegap" min="0.5" max="3" value="1.0" step="0.05" style="width:75px;"><span class="vl" id="r-linegap-v">1.0</span></div>
     </div>
     <!-- SEEK BAR -->
     <div id="seek-wrap">
@@ -499,6 +499,9 @@ function syncControlsToRecord() {
     if (fe && te) te.value = fe.value;
   });
   updateRecLabels();
+  // Apply default line gap
+  const lgEl = document.getElementById('r-linegap');
+  if (lgEl) document.getElementById('stage-inner').style.lineHeight = lgEl.value;
 }
 
 // ══════════════════════════════════════════
@@ -566,14 +569,20 @@ function buildStage() {
           if (wi>0) { const s=document.createElement('span'); s.className='ch sp'; s.textContent=' '; s.style.fontSize=fs; span.appendChild(s); }
           const s = document.createElement('span');
           s.className='ch'; s.textContent=w; s.style.fontSize=fs;
-          span.appendChild(s); stageUnits.push({el:s, cueIdx:cIdx, lineIdx:li});
+          const _wUnitIdx = stageUnits.filter(u=>u.cueIdx===cIdx).length;
+          s.dataset.cueIdx = cIdx; s.dataset.unitIdx = _wUnitIdx;
+          span.appendChild(s); stageUnits.push({el:s, cueIdx:cIdx, lineIdx:li, unitLocalIdx:_wUnitIdx});
         });
       } else {
         for (let ci=0; ci<line.length; ci++) {
           const ch=line[ci]; const s=document.createElement('span');
           s.className=ch===' '?'ch sp':'ch'; s.textContent=ch; s.style.fontSize=fs;
+          if (ch!==' ') {
+            const _cUnitIdx = stageUnits.filter(u=>u.cueIdx===cIdx).length;
+            s.dataset.cueIdx = cIdx; s.dataset.unitIdx = _cUnitIdx;
+            stageUnits.push({el:s, cueIdx:cIdx, lineIdx:li, unitLocalIdx:_cUnitIdx});
+          }
           span.appendChild(s);
-          if (ch!==' ') stageUnits.push({el:s, cueIdx:cIdx, lineIdx:li});
         }
       }
       div.appendChild(span);
@@ -583,6 +592,61 @@ function buildStage() {
   });
   // Re-apply current typeface after rebuild
   requestAnimationFrame(() => applyTypeface(currentTypeface));
+
+  // Click on any word/char on screen → play/pause from that word
+  document.querySelectorAll('.ch:not(.sp)').forEach(el => {
+    el.style.cursor = 'pointer';
+    el.addEventListener('click', e => {
+      e.stopPropagation();
+      const ci = parseInt(el.dataset.cueIdx);
+      const ui = parseInt(el.dataset.unitIdx);
+      if (isNaN(ci) || isNaN(ui) || !cues[ci]) return;
+
+      if (isPlaying && activeCueIdx === ci) {
+        // Already playing this cue — pause
+        stopPlayback();
+        return;
+      }
+
+      // Start playback from this word's approximate time
+      const cue = cues[ci];
+      if (cue.startTime === null) return;
+
+      // Calculate time offset to this unit within the cue
+      const mode = document.getElementById('r-mode').value;
+      const globalSpd = mode==='char'
+        ? parseInt(document.getElementById('r-csp').value)
+        : parseInt(document.getElementById('r-wsp').value);
+      const cueUnits = stageUnits.filter(u => u.cueIdx === ci);
+      let timeOffset = 0;
+      for (let i = 0; i < ui && i < cueUnits.length; i++) {
+        const u = cueUnits[i];
+        const spd = (cue.lineSpeeds && cue.lineSpeeds[u.lineIdx] != null) ? cue.lineSpeeds[u.lineIdx] : globalSpd;
+        const hold = (cue.unitHolds && cue.unitHolds[i]) ? cue.unitHolds[i] * 1000 : 0;
+        timeOffset += spd + hold;
+      }
+      const seekTime = cue.startTime + timeOffset / 1000;
+
+      // Seek audio to that time and start playing
+      stopPlayback();
+      if (audioEl) {
+        audioEl.currentTime = seekTime;
+        audioStartedAt = performance.now();
+        audioStartOffset = seekTime;
+      }
+      clearHL(); showCueEl(ci);
+      activeCueIdx = ci;
+      unitIdx = stageUnits.findIndex(u => u.cueIdx === ci && u.unitLocalIdx === ui);
+      if (unitIdx < 0) unitIdx = 0;
+      setTimeout(() => {
+        isPlaying = true;
+        if (audioEl) audioEl.play().catch(()=>{});
+        hlNextAt = performance.now();
+        rafId = requestAnimationFrame(rafLoop);
+        scheduleHl();
+      }, 30);
+    });
+  });
 }
 
 function showCueEl(idx) {
@@ -693,36 +757,8 @@ function buildLineSpeeds() {
       resetBtn.className='sec'; resetBtn.textContent='↺'; resetBtn.title='Reset speed';
       resetBtn.style.cssText='font-size:0.6rem;padding:2px 4px;flex-shrink:0;'; row.appendChild(resetBtn);
 
-      // ── hold input ──
-      const holdWrap = document.createElement('span');
-      holdWrap.style.cssText = 'display:flex;align-items:center;gap:2px;flex-shrink:0;';
-      const holdLbl = document.createElement('span');
-      holdLbl.style.cssText = 'font-size:0.6rem;color:#888;white-space:nowrap;';
-      holdLbl.textContent = '⏸';
-      holdWrap.appendChild(holdLbl);
-      const holdInput = document.createElement('input');
-      holdInput.type = 'number';
-      holdInput.min = 0; holdInput.max = 30; holdInput.step = 0.1;
-      holdInput.value = (cue.lineHolds && cue.lineHolds[li]) ? cue.lineHolds[li] : 0;
-      holdInput.placeholder = '0';
-      holdInput.title = "Hold (seconds) — keeps highlight on this word/char for extra time before moving on";
-      holdInput.style.cssText = 'width:46px;font-size:0.7rem;background:#0f1a3a;border:1px solid #1a4a6a;border-radius:3px;color:#88ccff;padding:2px 3px;text-align:center;flex-shrink:0;outline:none;';
-      holdInput.addEventListener('change', () => {
-        if (!cue.lineHolds) cue.lineHolds = [];
-        while (cue.lineHolds.length <= li) cue.lineHolds.push(0);
-        const v = parseFloat(holdInput.value) || 0;
-        cue.lineHolds[li] = Math.max(0, v);
-        holdInput.value = cue.lineHolds[li];
-      });
-      holdInput.addEventListener('keydown', e => {
-        if (e.key === 'Enter') { e.preventDefault(); holdInput.blur(); }
-      });
-      holdWrap.appendChild(holdInput);
-      const holdSecLbl = document.createElement('span');
-      holdSecLbl.style.cssText = 'font-size:0.6rem;color:#557;';
-      holdSecLbl.textContent = 's';
-      holdWrap.appendChild(holdSecLbl);
-      row.appendChild(holdWrap);
+      // ── hold: shown per-unit in a sub-row below this line ──
+      // (added after this row is appended)
 
       // ── delete ──
       const delBtn = document.createElement('button');
@@ -773,6 +809,54 @@ function buildLineSpeeds() {
       });
 
       list.appendChild(row);
+
+      // ── Per-unit hold sub-row ──
+      const lineUnitsForRow = stageUnits.filter(u => u.cueIdx === ci && u.lineIdx === li);
+      if (lineUnitsForRow.length > 0) {
+        const holdRow = document.createElement('div');
+        holdRow.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;padding:2px 4px 4px 46px;background:#080818;border-bottom:1px solid #0a0a1a;';
+
+        lineUnitsForRow.forEach((u, wi) => {
+          const wordText = u.el.textContent;
+          const localIdx = u.unitLocalIdx;
+
+          const unitWrap = document.createElement('span');
+          unitWrap.style.cssText = 'display:flex;align-items:center;gap:2px;background:#0f1a2a;border:1px solid #1a3a5a;border-radius:4px;padding:2px 5px;';
+
+          const wordLbl = document.createElement('span');
+          wordLbl.style.cssText = 'font-size:0.68rem;color:#aaa;max-width:60px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+          wordLbl.textContent = wordText;
+          unitWrap.appendChild(wordLbl);
+
+          const holdInp = document.createElement('input');
+          holdInp.type = 'number'; holdInp.min = 0; holdInp.max = 30; holdInp.step = 0.1;
+          holdInp.value = (cue.unitHolds && cue.unitHolds[localIdx]) ? cue.unitHolds[localIdx] : 0;
+          holdInp.title = 'Hold on "' + wordText + '" for this many seconds before moving to next';
+          holdInp.style.cssText = 'width:38px;font-size:0.68rem;background:#0a1020;border:1px solid #2a5a8a;border-radius:3px;color:#88ccff;padding:1px 3px;text-align:center;outline:none;';
+          holdInp.addEventListener('change', () => {
+            if (!cue.unitHolds) cue.unitHolds = [];
+            while (cue.unitHolds.length <= localIdx) cue.unitHolds.push(0);
+            cue.unitHolds[localIdx] = Math.max(0, parseFloat(holdInp.value) || 0);
+            holdInp.value = cue.unitHolds[localIdx];
+          });
+          holdInp.addEventListener('keydown', e => { if (e.key==='Enter') holdInp.blur(); });
+          unitWrap.appendChild(holdInp);
+
+          const sLbl = document.createElement('span');
+          sLbl.style.cssText = 'font-size:0.6rem;color:#446;';
+          sLbl.textContent = 's';
+          unitWrap.appendChild(sLbl);
+
+          holdRow.appendChild(unitWrap);
+        });
+
+        const holdTitle = document.createElement('div');
+        holdTitle.style.cssText = 'width:100%;font-size:0.58rem;color:#333;margin-bottom:2px;';
+        holdTitle.textContent = '⏸ Hold per word (seconds) — click word on screen to jump';
+        holdRow.insertBefore(holdTitle, holdRow.firstChild);
+
+        list.appendChild(holdRow);
+      }
     });
   });
   setTimeout(fixStageHeight, 50);
@@ -886,15 +970,15 @@ function hlTick() {
   const u = stageUnits[unitIdx];
   if (u.cueIdx !== activeCueIdx) return;
   u.el.classList.add('hl');
-  const unitLocalIdx = stageUnits.filter(x => x.cueIdx === u.cueIdx).indexOf(u);
+  const localIdx = u.unitLocalIdx !== undefined ? u.unitLocalIdx : stageUnits.filter(x=>x.cueIdx===u.cueIdx).indexOf(u);
   unitIdx++;
   const mode = document.getElementById('r-mode').value;
   const globalSpd = mode==='char' ? parseInt(document.getElementById('r-csp').value) : parseInt(document.getElementById('r-wsp').value);
   const cue = cues[u.cueIdx];
   const lineSpd = (cue && cue.lineSpeeds && cue.lineSpeeds[u.lineIdx] != null) ? cue.lineSpeeds[u.lineIdx] : globalSpd;
-  // Add hold time if set for this line (singer stretches a word/char)
-  const holdMs = (cue && cue.lineHolds && cue.lineHolds[u.lineIdx]) ? (cue.lineHolds[u.lineIdx] * 1000) : 0;
-  hlNextAt += lineSpd + holdMs;
+  // Per-unit hold (takes priority) or per-line hold
+  const unitHoldMs = (cue && cue.unitHolds && cue.unitHolds[localIdx]) ? (cue.unitHolds[localIdx] * 1000) : 0;
+  hlNextAt += lineSpd + unitHoldMs;
   scheduleHl();
 }
 
