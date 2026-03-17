@@ -85,7 +85,7 @@ audio { width:100%; border-radius:5px; }
 .cue-div { display:none; }
 .cue-div.on { display:block; }
 .sl-line { display:block; white-space:nowrap; }
-.ch { display:inline; font-family:'Arial Black',Arial,sans-serif; font-weight:900; text-transform:uppercase; color:#fff; text-shadow:2px 2px 0 #000,-2px 2px 0 #000,2px -2px 0 #000,-2px -2px 0 #000,0 3px 8px rgba(0,0,0,0.9); transition:color 0.04s; }
+.ch { display:inline; font-family:'Arial Black',Arial,sans-serif; font-weight:900; text-transform:uppercase; color:#fff; -webkit-text-stroke:2px #000; paint-order:stroke fill; transition:color 0.04s; }
 .ch.hl { color:#FFE600; }
 .ch.sp { display:inline; }
 
@@ -171,6 +171,7 @@ canvas { display:none; }
           <option value="arial-lower">Arial Black (Caps/small)</option>
         </select>
       </div>
+      <div class="sl"><label>Line Gap</label><input type="range" id="r-linegap" min="1" max="3" value="1.3" step="0.05" style="width:75px;"><span class="vl" id="r-linegap-v">1.3</span></div>
     </div>
     <!-- SEEK BAR -->
     <div id="seek-wrap">
@@ -517,21 +518,33 @@ function updateRecLabels() {
 });
 
 // Font typeface selector
+let currentTypeface = 'arial-black'; // global — used by buildStage
+
 function applyTypeface(val) {
-  const chEls = document.querySelectorAll('.ch');
+  currentTypeface = val;
+  const isBebas    = val === 'bebas-caps' || val === 'bebas-lower';
   const isUppercase = val === 'arial-black' || val === 'bebas-caps';
-  const fontFamily = (val === 'bebas-caps' || val === 'bebas-lower')
-    ? "'Bebas Neue', sans-serif"
-    : "'Arial Black', Arial, sans-serif";
-  chEls.forEach(c => {
-    c.style.fontFamily = fontFamily;
+  const fontFamily  = isBebas ? "'Bebas Neue', sans-serif" : "'Arial Black', Arial, sans-serif";
+  const fontWeight  = isBebas ? '400' : '900';
+  const strokeWidth = isBebas ? '1.5px' : '2px'; // Bebas is thinner, needs less stroke
+
+  document.querySelectorAll('.ch').forEach(c => {
+    c.style.fontFamily    = fontFamily;
+    c.style.fontWeight    = fontWeight;
     c.style.textTransform = isUppercase ? 'uppercase' : 'none';
-    c.style.fontWeight = (val === 'bebas-caps' || val === 'bebas-lower') ? '400' : '900';
+    c.style.webkitTextStroke = strokeWidth + ' #000';
   });
 }
 
 document.getElementById('r-typeface').addEventListener('change', e => {
   applyTypeface(e.target.value);
+});
+
+// Line gap slider
+document.getElementById('r-linegap').addEventListener('input', e => {
+  const v = e.target.value;
+  document.getElementById('r-linegap-v').textContent = v;
+  document.getElementById('stage-inner').style.lineHeight = v;
 });
 
 // ══════════════════════════════════════════
@@ -568,6 +581,8 @@ function buildStage() {
     });
     stageInner.appendChild(div);
   });
+  // Re-apply current typeface after rebuild
+  requestAnimationFrame(() => applyTypeface(currentTypeface));
 }
 
 function showCueEl(idx) {
@@ -952,18 +967,21 @@ function drawCanvas() {
 
   const fontPx = Math.round(parseFloat(document.getElementById('r-font').value) / 100 * W);
   // Use strokeText for crisp outline at any resolution — no pixelation
-  // Use selected typeface
-  const _tf = document.getElementById('r-typeface') ? document.getElementById('r-typeface').value : 'arial-black';
-  const _isUpper = _tf === 'arial-black' || _tf === 'bebas-caps';
-  const _fontFamily = (_tf === 'bebas-caps' || _tf === 'bebas-lower') ? 'Bebas Neue, sans-serif' : 'Arial Black, Arial, sans-serif';
-  const _fontWeight = (_tf === 'bebas-caps' || _tf === 'bebas-lower') ? '400' : '900';
+  // Typeface settings
+  const _tf        = currentTypeface || 'arial-black';
+  const _isUpper   = _tf === 'arial-black' || _tf === 'bebas-caps';
+  const _isBebas   = _tf === 'bebas-caps' || _tf === 'bebas-lower';
+  const _fontFamily = _isBebas ? 'Bebas Neue, sans-serif' : 'Arial Black, Arial, sans-serif';
+  const _fontWeight = _isBebas ? '400' : '900';
+  const _lineGapEl = document.getElementById('r-linegap');
+  const _lineGap   = _lineGapEl ? parseFloat(_lineGapEl.value) : 1.3;
   ctx.font = _fontWeight + ' ' + fontPx + 'px ' + _fontFamily;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.lineJoin = 'round';
 
   const lines = Array.from(cueDiv.querySelectorAll('.sl-line'));
-  const lineH = fontPx * 1.3;
+  const lineH = fontPx * _lineGap;
   const totalH = lineH * lines.length;
 
   lines.forEach((line, li) => {
@@ -984,7 +1002,7 @@ function drawCanvas() {
       const isHL = ch.classList.contains('hl');
 
       // strokeText gives perfect vector-quality outline at any scale
-      ctx.lineWidth = Math.max(6, Math.round(fontPx * 0.12));
+      ctx.lineWidth = _isBebas ? Math.max(3, Math.round(fontPx * 0.05)) : Math.max(5, Math.round(fontPx * 0.09));
       ctx.strokeStyle = '#000000';
       ctx.strokeText(txt, cx, y);
 
