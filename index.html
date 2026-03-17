@@ -171,7 +171,10 @@ canvas { display:none; }
 
 <!-- Stage lives outside panel so it fills remaining space -->
 <div id="line-speeds-panel" style="background:#080818;border-top:1px solid #0f3460;padding:4px 8px;max-height:130px;overflow-y:auto;flex-shrink:0;">
-  <div style="font-size:0.62rem;color:#444;margin-bottom:3px;text-transform:uppercase;letter-spacing:0.3px;">⚡ Speed per line &nbsp;|&nbsp; 🐌 Left = Slow &nbsp; Right = Fast ⚡ &nbsp;|&nbsp; Click line to jump preview</div>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;">
+  <div style="font-size:0.62rem;color:#444;text-transform:uppercase;letter-spacing:0.3px;">⚡ Speed per line &nbsp;|&nbsp; 🐌 Left=Slow · Right=Fast ⚡ · Click to jump · ✏️ Edit · Drag to reorder</div>
+  <button id="add-line-btn" style="font-size:0.68rem;padding:2px 10px;background:#1a4a20;border:1px solid #2ecc71;color:#2ecc71;border-radius:4px;cursor:pointer;flex-shrink:0;margin-left:8px;white-space:nowrap;">+ Add Cue</button>
+</div>
   <div id="line-speeds-list"><span style="font-size:0.72rem;color:#333;">Load lyrics in Setup tab first</span></div>
 </div>
 <div id="stage-wrap">
@@ -285,14 +288,49 @@ document.getElementById('setup-go').addEventListener('click', () => {
   if (!audioSrc) { err.textContent = '⚠ Upload audio first'; return; }
   if (!raw) { err.textContent = '⚠ Paste lyrics first'; return; }
   err.textContent = '';
-  cues = [];
+
+  // Parse new lyrics into cue groups
+  const newGroups = [];
   let cur = [];
   raw.split('\n').forEach(line => {
     const t = line.trim();
-    if (!t) { if (cur.length) { cues.push({lines:[...cur], startTime:null, endTime:null, lineSpeeds:[]}); cur=[]; } }
+    if (!t) { if (cur.length) { newGroups.push([...cur]); cur=[]; } }
     else cur.push(t);
   });
-  if (cur.length) cues.push({lines:[...cur], startTime:null, endTime:null, lineSpeeds:[]});
+  if (cur.length) newGroups.push([...cur]);
+
+  // MERGE: preserve existing timing/speeds/holds if cue count matches
+  // Match by position — if same number of cues, carry forward all data
+  if (cues.length > 0 && newGroups.length === cues.length) {
+    // Same cue count — update lyrics but KEEP all timing, speeds, holds
+    newGroups.forEach((lines, i) => {
+      cues[i].lines = lines;
+      while (cues[i].lineSpeeds.length < lines.length) cues[i].lineSpeeds.push(null);
+      cues[i].lineSpeeds = cues[i].lineSpeeds.slice(0, lines.length);
+    });
+  } else if (cues.length > 0) {
+    // Different cue count — merge what we can by position, add/remove rest
+    const merged = newGroups.map((lines, i) => {
+      if (cues[i]) {
+        // Carry forward timing + speeds from existing cue at same position
+        const existing = cues[i];
+        const ls = [...(existing.lineSpeeds||[])];
+        while (ls.length < lines.length) ls.push(null);
+        return { lines, startTime: existing.startTime, endTime: null,
+                 lineSpeeds: ls.slice(0, lines.length),
+                 holds: existing.holds||[], posX: existing.posX||50, posY: existing.posY||85 };
+      }
+      return { lines, startTime:null, endTime:null, lineSpeeds:lines.map(()=>null), holds:[], posX:50, posY:85 };
+    });
+    cues = merged;
+  } else {
+    // No existing cues — fresh start
+    cues = newGroups.map(lines => ({
+      lines, startTime:null, endTime:null,
+      lineSpeeds: lines.map(()=>null), holds:[], posX:50, posY:85
+    }));
+  }
+
   cues.forEach(c => { while(c.lineSpeeds.length < c.lines.length) c.lineSpeeds.push(null); });
   initTapSync();
   goTab('sync');
@@ -310,8 +348,8 @@ const syncAudio = document.getElementById('audio-sync');
 
 function initTapSync() {
   const already = cues.filter(c => c.startTime !== null).length;
-  tapIdx = already > 0 ? already : 0;
-  if (already === 0) cues.forEach(c => c.startTime = null);
+  // NEVER wipe existing start times — preserve them always
+  tapIdx = already;
   tapBtn.disabled = tapIdx >= cues.length;
   tapUndo.disabled = tapIdx === 0;
   updateTapUI(); renderTimingList();
@@ -522,60 +560,194 @@ function buildLineSpeeds() {
   if (!cues.length) { list.innerHTML = '<span style="font-size:0.72rem;color:#333;">Load lyrics first</span>'; return; }
   list.innerHTML = '';
   const defSpd = parseInt(document.getElementById('r-wsp').value) || 350;
+
   cues.forEach((cue, ci) => {
     if (!cue.lineSpeeds) cue.lineSpeeds = [];
     while (cue.lineSpeeds.length < cue.lines.length) cue.lineSpeeds.push(null);
+
     cue.lines.forEach((line, li) => {
       const spd = cue.lineSpeeds[li] !== null ? cue.lineSpeeds[li] : defSpd;
       const row = document.createElement('div');
-      row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:3px 6px;border-bottom:1px solid #111;cursor:pointer;';
+      row.dataset.ci = ci; row.dataset.li = li;
+      row.style.cssText = 'display:flex;align-items:center;gap:5px;padding:3px 4px;border-bottom:1px solid #111;';
       row.addEventListener('mouseenter', () => row.style.background='#0f0f28');
       row.addEventListener('mouseleave', () => row.style.background='');
-      row.addEventListener('click', e => { if (e.target.tagName==='INPUT'||e.target.tagName==='BUTTON') return; jumpPreviewToCue(ci); });
+
+      // ── drag handle ──
+      const handle = document.createElement('span');
+      handle.textContent = '⠿';
+      handle.style.cssText = 'color:#333;font-size:0.9rem;cursor:grab;flex-shrink:0;padding:0 2px;user-select:none;';
+      handle.draggable = true;
+      row.appendChild(handle);
+
+      // ── label ──
       const lbl = document.createElement('span');
-      lbl.style.cssText='font-size:0.66rem;color:#444;min-width:40px;font-weight:700;flex-shrink:0;';
-      lbl.textContent = 'C'+(ci+1)+'L'+(li+1); row.appendChild(lbl);
+      lbl.style.cssText = 'font-size:0.64rem;color:#444;min-width:36px;font-weight:700;flex-shrink:0;';
+      lbl.textContent = 'C'+(ci+1)+'L'+(li+1);
+      row.appendChild(lbl);
+
+      // ── lyric text (click to jump) + inline edit ──
+      const txtWrap = document.createElement('span');
+      txtWrap.style.cssText = 'display:flex;align-items:center;gap:2px;width:180px;flex-shrink:0;';
+
       const txt = document.createElement('span');
-      txt.style.cssText='font-size:0.76rem;color:#ccc;width:200px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;';
-      txt.textContent = line; row.appendChild(txt);
-      const slowL = document.createElement('span'); slowL.style.cssText='font-size:0.62rem;color:#555;flex-shrink:0;'; slowL.textContent='🐌'; row.appendChild(slowL);
+      txt.style.cssText = 'font-size:0.74rem;color:#ccc;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;';
+      txt.title = 'Click to jump';
+      txt.textContent = line;
+      txt.addEventListener('click', () => jumpPreviewToCue(ci));
+      txtWrap.appendChild(txt);
+
+      const editBtn = document.createElement('button');
+      editBtn.textContent = '✏️';
+      editBtn.title = 'Edit lyric';
+      editBtn.style.cssText = 'font-size:0.6rem;padding:1px 4px;background:#1a3a1a;border:1px solid #2ecc71;color:#2ecc71;border-radius:3px;cursor:pointer;flex-shrink:0;';
+      editBtn.addEventListener('click', () => {
+        const inp = document.createElement('input');
+        inp.type = 'text'; inp.value = cues[ci].lines[li];
+        inp.style.cssText = 'font-size:0.74rem;color:#fff;background:#0f3460;border:1px solid #e94560;border-radius:3px;padding:2px 5px;outline:none;flex:1;min-width:0;';
+        txtWrap.replaceChild(inp, txt);
+        editBtn.textContent = '✓'; editBtn.style.background='#1a5a2a';
+        inp.focus(); inp.select();
+        const save = () => {
+          const v = inp.value.trim() || cues[ci].lines[li];
+          cues[ci].lines[li] = v; txt.textContent = v;
+          txtWrap.replaceChild(txt, inp);
+          editBtn.textContent = '✏️'; editBtn.style.background = '#1a3a1a';
+          buildStage();
+        };
+        inp.addEventListener('keydown', e => { if(e.key==='Enter'){e.preventDefault();save();} if(e.key==='Escape'){txtWrap.replaceChild(txt,inp);editBtn.textContent='✏️';} });
+        inp.addEventListener('blur', save);
+        editBtn.onclick = e => { e.stopPropagation(); save(); };
+      });
+      txtWrap.appendChild(editBtn);
+      row.appendChild(txtWrap);
+
+      // ── slow ──
+      const slowL = document.createElement('span'); slowL.style.cssText='font-size:0.6rem;color:#555;flex-shrink:0;'; slowL.textContent='🐌'; row.appendChild(slowL);
+
+      // ── slider ──
       const slider = document.createElement('input');
       slider.type='range'; slider.min=40; slider.max=1500; slider.value=1540-spd; slider.step=10;
-      slider.style.cssText='width:110px;flex-shrink:0;accent-color:#e94560;'; row.appendChild(slider);
-      const fastL = document.createElement('span'); fastL.style.cssText='font-size:0.62rem;color:#555;flex-shrink:0;'; fastL.textContent='⚡'; row.appendChild(fastL);
+      slider.style.cssText='width:100px;flex-shrink:0;accent-color:#e94560;'; row.appendChild(slider);
+
+      // ── fast ──
+      const fastL = document.createElement('span'); fastL.style.cssText='font-size:0.6rem;color:#555;flex-shrink:0;'; fastL.textContent='⚡'; row.appendChild(fastL);
+
+      // ── ms input ──
       const numInput = document.createElement('input');
       numInput.type='number'; numInput.min=40; numInput.max=1500; numInput.step=10; numInput.value=spd;
-      numInput.style.cssText='width:52px;font-size:0.74rem;background:#0f3460;border:1px solid #e94560;border-radius:4px;color:#fff;padding:2px 4px;text-align:center;flex-shrink:0;outline:none;';
+      numInput.style.cssText='width:50px;font-size:0.72rem;background:#0f3460;border:1px solid #e94560;border-radius:4px;color:#fff;padding:2px 3px;text-align:center;flex-shrink:0;outline:none;';
       row.appendChild(numInput);
+
+      // ── speed label ──
       const spdLbl = document.createElement('span');
-      spdLbl.style.cssText='font-size:0.68rem;color:#2ecc71;font-weight:700;min-width:68px;flex-shrink:0;';
+      spdLbl.style.cssText='font-size:0.66rem;color:#2ecc71;font-weight:700;min-width:66px;flex-shrink:0;';
       spdLbl.textContent = getSpeedLabel(spd); row.appendChild(spdLbl);
-      const resetBtn = document.createElement('button'); resetBtn.className='sec'; resetBtn.textContent='↺'; resetBtn.style.cssText='font-size:0.6rem;padding:2px 5px;flex-shrink:0;'; row.appendChild(resetBtn);
-      const editBtn = document.createElement('button'); editBtn.className='sec'; editBtn.textContent='✏'; editBtn.style.cssText='font-size:0.7rem;padding:2px 5px;flex-shrink:0;background:#1a3a1a;border-color:#2ecc71;'; row.appendChild(editBtn);
+
+      // ── reset ──
+      const resetBtn = document.createElement('button');
+      resetBtn.className='sec'; resetBtn.textContent='↺'; resetBtn.title='Reset speed';
+      resetBtn.style.cssText='font-size:0.6rem;padding:2px 4px;flex-shrink:0;'; row.appendChild(resetBtn);
+
+      // ── hold input ──
+      const holdWrap = document.createElement('span');
+      holdWrap.style.cssText = 'display:flex;align-items:center;gap:2px;flex-shrink:0;';
+      const holdLbl = document.createElement('span');
+      holdLbl.style.cssText = 'font-size:0.6rem;color:#888;white-space:nowrap;';
+      holdLbl.textContent = '⏸';
+      holdWrap.appendChild(holdLbl);
+      const holdInput = document.createElement('input');
+      holdInput.type = 'number';
+      holdInput.min = 0; holdInput.max = 30; holdInput.step = 0.1;
+      holdInput.value = (cue.lineHolds && cue.lineHolds[li]) ? cue.lineHolds[li] : 0;
+      holdInput.placeholder = '0';
+      holdInput.title = "Hold (seconds) — keeps highlight on this word/char for extra time before moving on";
+      holdInput.style.cssText = 'width:46px;font-size:0.7rem;background:#0f1a3a;border:1px solid #1a4a6a;border-radius:3px;color:#88ccff;padding:2px 3px;text-align:center;flex-shrink:0;outline:none;';
+      holdInput.addEventListener('change', () => {
+        if (!cue.lineHolds) cue.lineHolds = [];
+        while (cue.lineHolds.length <= li) cue.lineHolds.push(0);
+        const v = parseFloat(holdInput.value) || 0;
+        cue.lineHolds[li] = Math.max(0, v);
+        holdInput.value = cue.lineHolds[li];
+      });
+      holdInput.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); holdInput.blur(); }
+      });
+      holdWrap.appendChild(holdInput);
+      const holdSecLbl = document.createElement('span');
+      holdSecLbl.style.cssText = 'font-size:0.6rem;color:#557;';
+      holdSecLbl.textContent = 's';
+      holdWrap.appendChild(holdSecLbl);
+      row.appendChild(holdWrap);
+
+      // ── delete ──
+      const delBtn = document.createElement('button');
+      delBtn.textContent='✕'; delBtn.title='Delete cue';
+      delBtn.style.cssText='font-size:0.6rem;padding:2px 4px;flex-shrink:0;background:#3a0f0f;border:1px solid #e94560;color:#e94560;border-radius:4px;cursor:pointer;'; row.appendChild(delBtn);
+
+      // speed logic
       function applySpeed(ms) {
         ms = Math.min(1500, Math.max(40, Math.round(ms/10)*10));
-        cue.lineSpeeds[li] = ms; slider.value = 1540-ms; numInput.value = ms; spdLbl.textContent = getSpeedLabel(ms);
+        cue.lineSpeeds[li]=ms; slider.value=1540-ms; numInput.value=ms; spdLbl.textContent=getSpeedLabel(ms);
       }
-      slider.addEventListener('input', () => applySpeed(1540 - parseInt(slider.value)));
-      numInput.addEventListener('change', () => { const v=parseInt(numInput.value); if (!isNaN(v)) applySpeed(v); });
+      slider.addEventListener('input', () => applySpeed(1540-parseInt(slider.value)));
+      numInput.addEventListener('change', () => { const v=parseInt(numInput.value); if(!isNaN(v)) applySpeed(v); });
       numInput.addEventListener('keydown', e => {
-        if (e.key === 'Enter' || e.key === 'Tab') {
+        if (e.key==='Enter'||e.key==='Tab') {
           e.preventDefault();
-          const v = parseInt(numInput.value);
-          if (!isNaN(v)) applySpeed(v);
-          // Move focus to next number input
-          const allNums = Array.from(document.querySelectorAll('#line-speeds-list input[type=number]'));
-          const curIdx  = allNums.indexOf(numInput);
-          if (curIdx >= 0 && curIdx < allNums.length - 1) allNums[curIdx + 1].focus();
+          const v=parseInt(numInput.value); if(!isNaN(v)) applySpeed(v);
+          const allNums=Array.from(document.querySelectorAll('#line-speeds-list input[type=number]'));
+          const curIdx=allNums.indexOf(numInput);
+          if(curIdx>=0&&curIdx<allNums.length-1) allNums[curIdx+1].focus();
         }
       });
       resetBtn.addEventListener('click', () => { applySpeed(defSpd); cue.lineSpeeds[li]=null; });
-      editBtn.addEventListener('click', () => { const t=prompt('Edit line:', line); if (t===null) return; cue.lines[li]=t.trim()||line; buildStage(); buildLineSpeeds(); });
+      delBtn.addEventListener('click', () => {
+        if (cues.length > 1 && confirm('Delete this cue?')) {
+          cues.splice(ci, 1);
+          buildStage(); buildLineSpeeds();
+        }
+      });
+
+      // drag-to-reorder
+      handle.addEventListener('dragstart', e => {
+        e.dataTransfer.setData('text/plain', String(ci));
+        row.style.opacity = '0.4';
+      });
+      handle.addEventListener('dragend', () => row.style.opacity = '1');
+      row.addEventListener('dragover', e => { e.preventDefault(); row.style.borderTop='2px solid #e94560'; });
+      row.addEventListener('dragleave', () => row.style.borderTop='');
+      row.addEventListener('drop', e => {
+        e.preventDefault(); row.style.borderTop='';
+        const fromCi = parseInt(e.dataTransfer.getData('text/plain'));
+        const toCi = parseInt(row.dataset.ci);
+        if (fromCi !== toCi && !isNaN(fromCi) && !isNaN(toCi)) {
+          const moved = cues.splice(fromCi, 1)[0];
+          cues.splice(toCi, 0, moved);
+          buildStage(); buildLineSpeeds();
+        }
+      });
+
       list.appendChild(row);
     });
   });
   setTimeout(fixStageHeight, 50);
 }
+
+// Add cue button
+document.addEventListener('click', e => {
+  if (e.target && e.target.id === 'add-line-btn') {
+    cues.push({lines:['NEW LINE'], startTime:null, endTime:null, lineSpeeds:[null], posX:50, posY:85});
+    buildStage(); buildLineSpeeds();
+    setTimeout(() => {
+      const inputs = document.querySelectorAll('#line-speeds-list input[type=text]');
+      if (inputs.length) {
+        const last = inputs[inputs.length-1];
+        last.closest('div') && last.scrollIntoView({behavior:'smooth', block:'nearest'});
+      }
+    }, 100);
+  }
+});
 
 function getSpeedLabel(ms) {
   if (ms<=80) return '⚡ Very Fast';
@@ -670,12 +842,15 @@ function hlTick() {
   const u = stageUnits[unitIdx];
   if (u.cueIdx !== activeCueIdx) return;
   u.el.classList.add('hl');
+  const unitLocalIdx = stageUnits.filter(x => x.cueIdx === u.cueIdx).indexOf(u);
   unitIdx++;
   const mode = document.getElementById('r-mode').value;
   const globalSpd = mode==='char' ? parseInt(document.getElementById('r-csp').value) : parseInt(document.getElementById('r-wsp').value);
   const cue = cues[u.cueIdx];
   const lineSpd = (cue && cue.lineSpeeds && cue.lineSpeeds[u.lineIdx] != null) ? cue.lineSpeeds[u.lineIdx] : globalSpd;
-  hlNextAt += lineSpd;
+  // Add hold time if set for this line (singer stretches a word/char)
+  const holdMs = (cue && cue.lineHolds && cue.lineHolds[u.lineIdx]) ? (cue.lineHolds[u.lineIdx] * 1000) : 0;
+  hlNextAt += lineSpd + holdMs;
   scheduleHl();
 }
 
